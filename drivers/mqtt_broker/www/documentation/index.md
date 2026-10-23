@@ -33,18 +33,20 @@ connection binding.
 
 ## Driver Suite
 
-The MQTT driver suite consists of two drivers:
+The MQTT driver suite consists of three drivers:
 
-| Driver             | Direction | Purpose                                                                                         |
-| ------------------ | --------- | ----------------------------------------------------------------------------------------------- |
-| **MQTT Broker**    | N/A       | Connection management to your MQTT broker                                                       |
-| **MQTT Universal** | Inbound   | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
+| Driver             | Direction     | Purpose                                                                                         |
+| ------------------ | ------------- | ----------------------------------------------------------------------------------------------- |
+| **MQTT Broker**    | N/A           | Connection management to your MQTT broker                                                       |
+| **MQTT Universal** | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
+| **MQTT Light**     | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)            |
 
 **Typical Setup:**
 
 1. Add the **MQTT Broker** driver and configure your broker connection
 1. Add **MQTT Universal** if you need to bring external MQTT devices into
    Control4
+1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
 
 # <span style="color:#660066">Index</span>
 
@@ -118,7 +120,7 @@ is an outline of the basic steps for your convenience.
 
 1. Extract and
    [install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
-   the `mqtt_broker.c4z` and `mqtt_universal.c4z` drivers.
+   the `mqtt_broker.c4z`, `mqtt_universal.c4z` and `mqtt_light.c4z` drivers.
 
 1. Use the "Search" tab to find the "MQTT Broker" driver and add it to your
    project.
@@ -153,7 +155,7 @@ is an outline of the basic steps for your convenience.
 
 1. Extract and
    [install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
-   the `mqtt_broker.c4z` and `mqtt_universal.c4z` drivers.
+   the `mqtt_broker.c4z`, `mqtt_universal.c4z` and `mqtt_light.c4z` drivers.
 
 1. Use the "Search" tab to find the "MQTT Broker" driver and add it to your
    project.

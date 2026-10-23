@@ -22,6 +22,14 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 
 ## Unreleased
 
+### Added
+
+- Added the MQTT Light driver, a native Control4 light (light_v2) for one MQTT
+  light. Its abilities follow the topics you fill in: on/off, dimmer, color
+  temperature, full color (RGB, Hex, HSB, HS or XY), an RGBW white channel and
+  device-side fades. Works with separate plain topics (Tasmota, ESPHome) or a
+  single JSON state/command topic (Zigbee2MQTT).
+
 ### Fixed
 
 - Fixed an automatic update sometimes leaving companion drivers on the previous

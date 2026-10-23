@@ -1,0 +1,573 @@
+<devicedata>
+  <name>MQTT Light</name>
+  <version/>
+  <manufacturer>Finite Labs</manufacturer>
+  <model>MQTT Light</model>
+  <creator>krishy2</creator>
+  <small image_source="c4z">icons/device_sm.png</small>
+  <large image_source="c4z">icons/device_lg.png</large>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Finite Labs, LLC. All rights reserved.</copyright>
+  <created>10/24/2026 12:00:00 PM</created>
+  <modified/>
+  <combo>true</combo>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" name="MQTT Light" image_source="c4z" small_image="icons/device_sm.png" large_image="icons/device_lg.png">light_v2</proxy>
+  </proxies>
+  <composer_categories>
+    <category>Lighting</category>
+  </composer_categories>
+  <conditionals/>
+  <events/>
+  <capabilities>
+    <dimmer>true</dimmer>
+    <set_level>true</set_level>
+    <supports_target>true</supports_target>
+    <ramp_level>true</ramp_level>
+    <click_rates>true</click_rates>
+    <click_rate_min>0</click_rate_min>
+    <click_rate_max>3600000</click_rate_max>
+    <hold_rates>true</hold_rates>
+    <hold_rate_min>500</hold_rate_min>
+    <hold_rate_max>3600000</hold_rate_max>
+    <brightness_rate_min>0</brightness_rate_min>
+    <brightness_rate_max>3600000</brightness_rate_max>
+    <color_rate_min>0</color_rate_min>
+    <color_rate_max>3600000</color_rate_max>
+    <supports_brightness_stop>true</supports_brightness_stop>
+    <supports_color>false</supports_color>
+    <supports_color_correlated_temperature>false</supports_color_correlated_temperature>
+    <color_correlated_temperature_min>2000</color_correlated_temperature_min>
+    <color_correlated_temperature_max>6500</color_correlated_temperature_max>
+    <color_rate_behavior>0</color_rate_behavior>
+    <reduced_als_support>true</reduced_als_support>
+    <advanced_scene_support>false</advanced_scene_support>
+    <load_group_support>false</load_group_support>
+    <has_leds>false</has_leds>
+    <cold_start>false</cold_start>
+    <min_max>false</min_max>
+    <has_button_events>false</has_button_events>
+  </capabilities>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <!-- #ifdef DRIVERCENTRAL -->
+      <property>
+        <name>Cloud Settings</name>
+        <type>LABEL</type>
+        <default>Cloud Settings</default>
+      </property>
+      <property>
+        <name>Cloud Status</name>
+        <default/>
+        <type>STRING</type>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Automatic Updates</name>
+        <type>LIST</type>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+        <default>On</default>
+      </property>
+      <!-- #endif -->
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <!-- Global Availability Settings -->
+      <property>
+        <name>Availability Settings</name>
+        <type>LABEL</type>
+        <default>Availability Settings</default>
+      </property>
+      <property>
+        <name>Availability Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to subscribe for device availability (optional)</description>
+      </property>
+      <property>
+        <name>Availability Topic Value</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Raw value received from the availability topic</description>
+      </property>
+      <property>
+        <name>Availability Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to extract availability value (e.g., "$.status"). Leave empty to use raw payload.</description>
+      </property>
+      <property>
+        <name>Availability Value Path Result</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Result of JSONPath extraction for availability</description>
+      </property>
+      <property>
+        <name>Availability Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current availability status</description>
+      </property>
+      <property>
+        <name>Payload Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is available (if only this is set, other values mean unavailable)</description>
+      </property>
+      <property>
+        <name>Payload Not Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is not available (if only this is set, other values mean available)</description>
+      </property>
+      <!-- Light Settings -->
+      <property>
+        <name>Light Settings</name>
+        <type>LABEL</type>
+        <default>Light Settings</default>
+      </property>
+      <property>
+        <name>Capabilities</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Abilities this light has, derived from the topics (or JSON keys) that are filled in</description>
+      </property>
+      <property>
+        <name>Light State</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current state as reported to Control4</description>
+      </property>
+      <property>
+        <name>Payload Mode</name>
+        <type>LIST</type>
+        <default>Separate Topics</default>
+        <items>
+          <item>Separate Topics</item>
+          <item>JSON</item>
+        </items>
+        <description>Separate Topics: one topic per ability with plain values (Tasmota, ESPHome). JSON: one state topic and one command topic carrying a JSON object (Zigbee2MQTT, Home Assistant JSON schema).</description>
+      </property>
+      <property>
+        <name>JSON State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic the light publishes its JSON state on (e.g. zigbee2mqtt/kitchen)</description>
+      </property>
+      <property>
+        <name>JSON Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish JSON commands to (e.g. zigbee2mqtt/kitchen/set)</description>
+      </property>
+      <property>
+        <name>Optimistic</name>
+        <type>LIST</type>
+        <default>Auto</default>
+        <items>
+          <item>Auto</item>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Report commanded state immediately instead of waiting for the device (Auto: yes when no state topic is set)</description>
+      </property>
+      <property>
+        <name>QoS</name>
+        <type>LIST</type>
+        <default>0</default>
+        <items>
+          <item>0</item>
+          <item>1</item>
+          <item>2</item>
+        </items>
+        <description>MQTT Quality of Service level for subscriptions and commands</description>
+      </property>
+      <property>
+        <name>Retain</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Retain command messages on the broker</description>
+      </property>
+      <!-- On/Off -->
+      <property>
+        <name>On/Off</name>
+        <type>LABEL</type>
+        <default>On/Off</default>
+      </property>
+      <property>
+        <name>Power State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting on/off state (e.g. stat/tasmota_light/POWER)</description>
+      </property>
+      <property>
+        <name>Power Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the on/off value when the payload is JSON (e.g. "$.POWER"). Leave empty to use the raw payload.</description>
+      </property>
+      <property>
+        <name>Power Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish on/off commands to (e.g. cmnd/tasmota_light/POWER)</description>
+      </property>
+      <property>
+        <name>State Key</name>
+        <type>STRING</type>
+        <default>state</default>
+        <description>JSON key (or JSONPath) holding the on/off state</description>
+      </property>
+      <property>
+        <name>State On</name>
+        <type>STRING</type>
+        <default>ON</default>
+        <description>Value that means ON (if only this is set, other values mean OFF)</description>
+      </property>
+      <property>
+        <name>State Off</name>
+        <type>STRING</type>
+        <default>OFF</default>
+        <description>Value that means OFF (if only this is set, other values mean ON)</description>
+      </property>
+      <property>
+        <name>Payload On</name>
+        <type>STRING</type>
+        <default>ON</default>
+        <description>Value to send to turn the light on</description>
+      </property>
+      <property>
+        <name>Payload Off</name>
+        <type>STRING</type>
+        <default>OFF</default>
+        <description>Value to send to turn the light off</description>
+      </property>
+      <!-- Dimmer -->
+      <property>
+        <name>Dimmer</name>
+        <type>LABEL</type>
+        <default>Dimmer</default>
+      </property>
+      <property>
+        <name>Brightness State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting brightness. Filling in a brightness topic makes the light a dimmer.</description>
+      </property>
+      <property>
+        <name>Brightness Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the brightness value (e.g. "$.Dimmer" for Tasmota stat/x/RESULT)</description>
+      </property>
+      <property>
+        <name>Brightness Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish brightness commands to (e.g. cmnd/tasmota_light/Dimmer)</description>
+      </property>
+      <property>
+        <name>Brightness Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for brightness (e.g. "brightness"). Filling it in makes the light a dimmer.</description>
+      </property>
+      <property>
+        <name>Brightness Scale Max</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>65535</maximum>
+        <default>100</default>
+        <description>Device value for 100% brightness (100 for Tasmota, 254 for Zigbee2MQTT, 255 for many others)</description>
+      </property>
+      <!-- Color Temperature -->
+      <property>
+        <name>Color Temperature</name>
+        <type>LABEL</type>
+        <default>Color Temperature</default>
+      </property>
+      <property>
+        <name>Color Temp State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting color temperature. Filling in a color temperature topic adds tunable white.</description>
+      </property>
+      <property>
+        <name>Color Temp Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the color temperature value (e.g. "$.CT")</description>
+      </property>
+      <property>
+        <name>Color Temp Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish color temperature commands to (e.g. cmnd/tasmota_light/CT)</description>
+      </property>
+      <property>
+        <name>Color Temp Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for color temperature (e.g. "color_temp"). Filling it in adds tunable white.</description>
+      </property>
+      <property>
+        <name>Color Temp Unit</name>
+        <type>LIST</type>
+        <default>Mireds</default>
+        <items>
+          <item>Mireds</item>
+          <item>Kelvin</item>
+        </items>
+        <description>Unit the device uses for color temperature (Tasmota and Zigbee use mireds)</description>
+      </property>
+      <property>
+        <name>Color Temp Min</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1000</minimum>
+        <maximum>20000</maximum>
+        <default>2000</default>
+        <description>Warmest color temperature the light supports, in Kelvin</description>
+      </property>
+      <property>
+        <name>Color Temp Max</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1000</minimum>
+        <maximum>20000</maximum>
+        <default>6500</default>
+        <description>Coolest color temperature the light supports, in Kelvin</description>
+      </property>
+      <!-- Color -->
+      <property>
+        <name>Color</name>
+        <type>LABEL</type>
+        <default>Color</default>
+      </property>
+      <property>
+        <name>Color State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting color. Filling in a color topic adds full color.</description>
+      </property>
+      <property>
+        <name>Color Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the color value (e.g. "$.Color" or "$.HSBColor")</description>
+      </property>
+      <property>
+        <name>Color Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish color commands to (e.g. cmnd/tasmota_light/Color)</description>
+      </property>
+      <property>
+        <name>Color Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the color object (e.g. "color"). Filling it in adds full color.</description>
+      </property>
+      <property>
+        <name>Color Format</name>
+        <type>LIST</type>
+        <default>Hex (RRGGBB)</default>
+        <items>
+          <item>RGB (r,g,b)</item>
+          <item>Hex (RRGGBB)</item>
+          <item>Hex (#RRGGBB)</item>
+          <item>HSB (h,s,b)</item>
+          <item>HS (h,s)</item>
+          <item>XY (x,y)</item>
+        </items>
+        <description>How the color value is written. Hex also accepts Tasmota's extra white channels (e.g. FF800000).</description>
+      </property>
+      <property>
+        <name>JSON Color Format</name>
+        <type>LIST</type>
+        <default>XY {x,y}</default>
+        <items>
+          <item>XY {x,y}</item>
+          <item>RGB {r,g,b}</item>
+          <item>HS {hue,saturation}</item>
+        </items>
+        <description>Shape of the color object sent in JSON mode</description>
+      </property>
+      <property>
+        <name>Color Includes Brightness</name>
+        <type>LIST</type>
+        <default>Yes</default>
+        <items>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Yes: RGB/Hex values are scaled to the brightness (Tasmota). No: always send full-intensity color.</description>
+      </property>
+      <!-- White Channel -->
+      <property>
+        <name>White Channel</name>
+        <type>LABEL</type>
+        <default>White Channel</default>
+      </property>
+      <property>
+        <name>White State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the white channel level (RGBW lights)</description>
+      </property>
+      <property>
+        <name>White Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the white value (e.g. "$.White")</description>
+      </property>
+      <property>
+        <name>White Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish white channel commands to (e.g. cmnd/tasmota_light/White)</description>
+      </property>
+      <property>
+        <name>White Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the white channel (e.g. "white")</description>
+      </property>
+      <property>
+        <name>White Scale Max</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>65535</maximum>
+        <default>100</default>
+        <description>Device value for 100% white</description>
+      </property>
+      <property>
+        <name>White Color Temp</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1000</minimum>
+        <maximum>20000</maximum>
+        <default>4000</default>
+        <description>Color temperature of the white channel in Kelvin, used when there is no color temperature topic</description>
+      </property>
+      <!-- Transition -->
+      <property>
+        <name>Transition</name>
+        <type>LABEL</type>
+        <default>Transition</default>
+      </property>
+      <property>
+        <name>Transition Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish the fade time to before each command (e.g. cmnd/tasmota_light/Speed). Filling it in lets the device do fades itself.</description>
+      </property>
+      <property>
+        <name>Transition Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the fade time (e.g. "transition")</description>
+      </property>
+      <property>
+        <name>Transition Unit</name>
+        <type>LIST</type>
+        <default>Seconds</default>
+        <items>
+          <item>Seconds</item>
+          <item>Tenths of a Second</item>
+          <item>Milliseconds</item>
+          <item>Tasmota Speed</item>
+        </items>
+        <description>Unit of the transition value. Tasmota Speed: 1-40 half-seconds (enable Fade on the device).</description>
+      </property>
+    </properties>
+    <commands/>
+  </config>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Light</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>LIGHT_V2</classname>
+        </class>
+      </classes>
+      <hidden>True</hidden>
+    </connection>
+    <connection>
+      <id>5002</id>
+      <facing>6</facing>
+      <connectionname>MQTT Broker</connectionname>
+      <type>2</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>MQTT_BROKER</classname>
+          <autobind>True</autobind>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+  </connections>
+</devicedata>
