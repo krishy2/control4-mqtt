@@ -425,6 +425,11 @@ local function readFile(path)
   return body
 end
 local xml = readFile("drivers/mqtt_light/driver.xml")
+T.contains("driver.xml declares the light_v2 proxy on binding 5001", xml, '<proxy proxybindingid="5001"')
+T.check(
+  "driver.xml is not a combo driver (combo drivers get no proxy or Navigator UI)",
+  not xml:find("<combo>", 1, true)
+)
 for block in xml:gmatch("<property>(.-)</property>") do
   local name = block:match("<name>(.-)</name>")
   local default = block:match("<default>(.-)</default>") or ""

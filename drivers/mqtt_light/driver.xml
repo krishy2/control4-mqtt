@@ -11,7 +11,6 @@
   <copyright>Copyright 2026 Finite Labs, LLC. All rights reserved.</copyright>
   <created>10/24/2026 12:00:00 PM</created>
   <modified/>
-  <combo>true</combo>
   <minimum_os_version>3.3.0</minimum_os_version>
   <proxies qty="1">
     <proxy proxybindingid="5001" name="MQTT Light" image_source="c4z" small_image="icons/device_sm.png" large_image="icons/device_lg.png">light_v2</proxy>
@@ -22,6 +21,7 @@
   <conditionals/>
   <events/>
   <capabilities>
+    <on_off>true</on_off>
     <dimmer>true</dimmer>
     <set_level>true</set_level>
     <supports_target>true</supports_target>
@@ -49,6 +49,9 @@
     <cold_start>false</cold_start>
     <min_max>false</min_max>
     <has_button_events>false</has_button_events>
+    <buttons_are_virtual>true</buttons_are_virtual>
+    <hide_proxy_properties>false</hide_proxy_properties>
+    <hide_proxy_events>false</hide_proxy_events>
   </capabilities>
   <config>
     <script file="driver.lua" jit="1"/>
