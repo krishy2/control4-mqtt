@@ -6,11 +6,6 @@
 --- filled in: On/Off always, then Dimmer, Color Temperature, Color, a White
 --- channel and device-side Transitions.
 
---#ifdef DRIVERCENTRAL
-DC_PID = 857
-DC_X = nil
-DC_FILENAME = "mqtt_light.c4z"
---#endif
 require("lib.utils")
 require("drivers-common-public.global.handlers")
 require("drivers-common-public.global.lib")
@@ -301,12 +296,7 @@ end
 -----------------------------------------------------------------------
 
 function OnDriverInit()
-  --#ifdef DRIVERCENTRAL
-  require("cloud-client-byte")
-  C4:AllowExecute(false)
-  --#else
   C4:AllowExecute(true)
-  --#endif
   gInitialized = false
   log:setLogName(C4:GetDeviceData(C4:GetDeviceID(), "name"))
   log:setLogLevel(Properties["Log Level"])

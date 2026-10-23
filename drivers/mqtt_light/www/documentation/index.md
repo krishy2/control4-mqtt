@@ -1,4 +1,4 @@
-<!-- Copyright 2026 Finite Labs, LLC. All rights reserved. -->
+<!-- Copyright 2026 Control Pro. All rights reserved. -->
 
 <style>
 @media print {
@@ -45,9 +45,6 @@ up immediately, no driver reload needed.
   - [Driver Installation](#driver-installation)
   - [Driver Setup](#driver-setup)
     - [Driver Properties](#driver-properties)
-      <!-- #ifdef DRIVERCENTRAL -->
-      - [Cloud Settings](#cloud-settings)
-      <!-- #endif -->
       - [Driver Settings](#driver-settings)
       - [Availability Settings](#availability-settings)
       - [Light Settings](#light-settings)
@@ -62,11 +59,6 @@ up immediately, no driver reload needed.
   - [How the Light Behaves](#how-the-light-behaves)
   - [Connections](#connections)
   - [Programming](#programming)
-  <!-- #ifdef DRIVERCENTRAL -->
-- [Developer Information](#developer-information)
-
-<!-- #endif -->
-
 - [Support](#support)
 - [Changelog](#changelog)
 
@@ -115,20 +107,6 @@ up immediately, no driver reload needed.
 ## Driver Setup
 
 ### Driver Properties
-
-<!-- #ifdef DRIVERCENTRAL -->
-
-#### Cloud Settings
-
-##### Cloud Status
-
-Displays the DriverCentral cloud license status.
-
-##### Automatic Updates
-
-Turns on/off the DriverCentral cloud automatic updates.
-
-<!-- #endif -->
 
 #### Driver Settings
 
@@ -417,43 +395,11 @@ Use the standard Control4 light events, conditionals and commands on the light.
 
 - **Device Available** - whether the device is available
 
-<!-- #ifdef DRIVERCENTRAL -->
-
-# <span style="color:#660066">Developer Information</span>
-
-<p align="center">
-<img alt="Finite Labs" src="./images/finite-labs-logo.png" width="400"/>
-</p>
-
-Copyright © 2026 Finite Labs LLC
-
-All information contained herein is, and remains the property of Finite Labs LLC
-and its suppliers, if any. The intellectual and technical concepts contained
-herein are proprietary to Finite Labs LLC and its suppliers and may be covered
-by U.S. and Foreign Patents, patents in process, and are protected by trade
-secret or copyright law. Dissemination of this information or reproduction of
-this material is strictly forbidden unless prior written permission is obtained
-from Finite Labs LLC. For the latest information, please visit
-https://drivercentral.io/platforms/control4-drivers/utility/mqtt
-
-<!-- #endif -->
-
 # <span style="color:#660066">Support</span>
-
-<!-- #ifdef DRIVERCENTRAL -->
-
-If you have any questions or issues integrating this driver with Control4 or
-MQTT, you can contact us at
-[driver-support@finitelabs.com](mailto:driver-support@finitelabs.com) or
-call/text us at [+1 (949) 371-5805](tel:+19493715805).
-
-<!-- #else -->
 
 If you have any questions or issues integrating this driver with Control4, you
 can file an issue on GitHub:
 
-https://github.com/finitelabs/control4-mqtt/issues/new
-
-<!-- #endif -->
+https://github.com/krishy2/control4-mqtt/issues/new
 
 <!-- #embed-changelog -->
