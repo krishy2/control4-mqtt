@@ -7,7 +7,6 @@ DRIVER_GITHUB_REPO = "finitelabs/control4-mqtt"
 DRIVER_FILENAMES = {
   "mqtt_broker.c4z",
   "mqtt_universal.c4z",
-  "mqtt_light.c4z",
 }
 --#endif
 
