@@ -20,3 +20,23 @@ record-driver-version:
 
 # Runs after the stock build steps, so a failed build does not use up a version.
 build build-nodocs: record-driver-version
+
+# ─── Experiments ─────────────────────────────────────────────────────────────
+# Test drivers under experiments/ are built on their own and never go into a
+# release. Output: dist/experiments/<name>.c4z
+
+EXPERIMENT_DIR := build/oss/drivers/mqtt_server_test
+
+.PHONY: mqtt-server-test
+mqtt-server-test: ## Build the step 0 MQTT Server Test driver (experiments/, not released)
+	./tools/preprocess.py --oss
+	rm -rf $(EXPERIMENT_DIR)
+	mkdir -p $(EXPERIMENT_DIR) dist/experiments dist/oss/source
+	cp -r experiments/mqtt_server_test/driver.lua experiments/mqtt_server_test/driver.xml \
+		experiments/mqtt_server_test/driver.c4zproj experiments/mqtt_server_test/www $(EXPERIMENT_DIR)/
+	python3 tools/package.py xml-set $(EXPERIMENT_DIR)/driver.xml version "$(DRIVER_VERSION)"
+	python3 tools/package.py xml-set $(EXPERIMENT_DIR)/driver.xml modified "$$(date +'%m/%d/%Y %I:%M %p')"
+	cd $(EXPERIMENT_DIR) && luajit ../../../../tools/gen-squishy.lua
+	$(VENV_PY) tools/docs.py md2html $(EXPERIMENT_DIR)/www/documentation/index.md $(EXPERIMENT_DIR)/www/documentation
+	cd $(EXPERIMENT_DIR) && "$(CURDIR)/$(VENV_PY)" "$(CURDIR)/$(PACKAGER)" . "$(CURDIR)/dist/experiments" driver.c4zproj
+	@$(MAKE) --no-print-directory record-driver-version DRIVER_VERSION=$(DRIVER_VERSION)

@@ -1,0 +1,356 @@
+<devicedata>
+  <name>MQTT Server Test</name>
+  <version/>
+  <manufacturer>Control Pro</manufacturer>
+  <model>MQTT Server Test</model>
+  <creator>Chris Toth</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
+  <created>10/24/2026 12:00:00 PM</created>
+  <modified/>
+  <combo>true</combo>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Misc</category>
+  </composer_categories>
+  <conditionals/>
+  <events/>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Version of this driver</description>
+      </property>
+      <property>
+        <name>Controller OS</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Control4 OS version of this controller</description>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+        <description>Logging level</description>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+        <description>Where log output goes. Turns itself off after 3 hours.</description>
+      </property>
+      <property>
+        <name>Log Messages</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>On</item>
+        </items>
+        <description>Print every received MQTT message (needs Log Mode Print)</description>
+      </property>
+      <property>
+        <name>Server</name>
+        <type>LABEL</type>
+        <default>Server</default>
+      </property>
+      <property>
+        <name>Listen Port</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>65535</maximum>
+        <default>3883</default>
+        <description>TCP port for MQTT clients. 1883 is used by the controller's own broker.</description>
+      </property>
+      <property>
+        <name>Max Clients</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>2000</maximum>
+        <default>250</default>
+        <description>Refuse new connections above this many</description>
+      </property>
+      <property>
+        <name>Server Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Whether the port is open</description>
+      </property>
+      <property>
+        <name>Test Summary</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Clients, problems and worst timer lag at a glance</description>
+      </property>
+      <property>
+        <name>Connections</name>
+        <type>LABEL</type>
+        <default>Connections</default>
+      </property>
+      <property>
+        <name>Connected Clients</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Clients that completed the MQTT handshake</description>
+      </property>
+      <property>
+        <name>Open Connections</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Open TCP connections, including ones still handshaking</description>
+      </property>
+      <property>
+        <name>Peak Connections</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Most connections open at the same time</description>
+      </property>
+      <property>
+        <name>Total Connections</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Connections accepted since the last reset</description>
+      </property>
+      <property>
+        <name>Rejected Connections</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Refused: unsupported protocol, bad client id or Max Clients</description>
+      </property>
+      <property>
+        <name>Client Takeovers</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>A client reconnected with the same id and replaced its old connection</description>
+      </property>
+      <property>
+        <name>Keepalive Timeouts</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Clients closed for going quiet longer than 1.5 x keepalive</description>
+      </property>
+      <property>
+        <name>Slow Clients Dropped</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Clients closed because 1 MB of output was waiting for them</description>
+      </property>
+      <property>
+        <name>Traffic</name>
+        <type>LABEL</type>
+        <default>Traffic</default>
+      </property>
+      <property>
+        <name>Messages In</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>PUBLISH packets received</description>
+      </property>
+      <property>
+        <name>Messages Delivered</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Messages sent on to subscribers</description>
+      </property>
+      <property>
+        <name>Messages per Second</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Messages received per second, last 5 seconds</description>
+      </property>
+      <property>
+        <name>Retained Messages</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Retained messages held in memory</description>
+      </property>
+      <property>
+        <name>Wills Published</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Last Will messages sent for clients that dropped</description>
+      </property>
+      <property>
+        <name>Data In</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Bytes and packets received</description>
+      </property>
+      <property>
+        <name>Data Out</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Bytes and packets sent</description>
+      </property>
+      <property>
+        <name>TCP Reads</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Socket reads; split and multi-packet counts show framing works</description>
+      </property>
+      <property>
+        <name>Errors</name>
+        <type>LABEL</type>
+        <default>Errors</default>
+      </property>
+      <property>
+        <name>Protocol Errors</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Malformed or unexpected MQTT data. Should stay 0.</description>
+      </property>
+      <property>
+        <name>Last Protocol Error</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Most recent protocol error</description>
+      </property>
+      <property>
+        <name>Socket Errors</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Socket-level errors</description>
+      </property>
+      <property>
+        <name>Last Socket Error</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Most recent socket error</description>
+      </property>
+      <property>
+        <name>Driver Errors</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Lua errors inside this driver. Should stay 0.</description>
+      </property>
+      <property>
+        <name>Last Driver Error</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Most recent Lua error</description>
+      </property>
+      <property>
+        <name>Controller Load</name>
+        <type>LABEL</type>
+        <default>Controller Load</default>
+      </property>
+      <property>
+        <name>Timer Lag</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>How late the 1-second timer fires: a measure of how busy Director is</description>
+      </property>
+      <property>
+        <name>Lua Memory</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Memory used by this driver's Lua state</description>
+      </property>
+      <property>
+        <name>Running For</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Time since start or the last statistics reset</description>
+      </property>
+    </properties>
+    <actions>
+      <action>
+        <name>Print Report</name>
+        <command>PrintReport</command>
+      </action>
+      <action>
+        <name>Print Clients</name>
+        <command>PrintClients</command>
+      </action>
+      <action>
+        <name>Print Retained</name>
+        <command>PrintRetained</command>
+      </action>
+      <action>
+        <name>Reset Statistics</name>
+        <command>ResetStatistics</command>
+      </action>
+      <action>
+        <name>Disconnect All Clients</name>
+        <command>DisconnectAllClients</command>
+      </action>
+      <action>
+        <name>Restart Server</name>
+        <command>RestartServer</command>
+      </action>
+      <action>
+        <name>Publish Test</name>
+        <command>PublishTest</command>
+        <params>
+          <param>
+            <name>Topic</name>
+            <type>STRING</type>
+            <default>cmnd/tasmota/POWER</default>
+          </param>
+          <param>
+            <name>Payload</name>
+            <type>STRING</type>
+            <default>TOGGLE</default>
+          </param>
+        </params>
+      </action>
+    </actions>
+    <commands/>
+  </config>
+  <capabilities/>
+  <connections/>
+</devicedata>
