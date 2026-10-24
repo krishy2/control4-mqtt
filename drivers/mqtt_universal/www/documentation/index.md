@@ -404,7 +404,7 @@ call/text us at [+1 (949) 371-5805](tel:+19493715805).
 If you have any questions or issues integrating this driver with Control4, you
 can file an issue on GitHub:
 
-https://github.com/finitelabs/control4-mqtt/issues/new
+https://github.com/krishy2/control4-mqtt/issues/new
 
 <a href="https://www.buymeacoffee.com/derek.miller" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 

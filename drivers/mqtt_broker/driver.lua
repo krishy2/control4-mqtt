@@ -3,10 +3,11 @@ DC_PID = 857
 DC_X = nil
 DC_FILENAME = "mqtt_broker.c4z"
 --#else
-DRIVER_GITHUB_REPO = "finitelabs/control4-mqtt"
+DRIVER_GITHUB_REPO = "krishy2/control4-mqtt"
 DRIVER_FILENAMES = {
   "mqtt_broker.c4z",
   "mqtt_universal.c4z",
+  "mqtt_light.c4z",
 }
 --#endif
 
