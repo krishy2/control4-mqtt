@@ -374,6 +374,8 @@ class Controller(Client):
     def handle(self, topic, payload, retain):
         text = payload.decode(errors="replace")
         parts = topic.split("/")
+        if len(parts) == 3 and not parts[1].startswith(self.args.prefix + "_"):
+            return  # a real device on the same broker, not one of ours
         if len(parts) == 3 and parts[0] == "tele" and parts[2] == "STATE":
             try:
                 outer = json.loads(text)
