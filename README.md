@@ -17,7 +17,9 @@ works in one of two modes:
 - **Built-in**: the controller is the broker. MQTT devices such as Tasmota
   connect straight to the controller, with no extra hardware or software.
 
-The other MQTT drivers work the same in both modes.
+The other MQTT drivers work the same in both modes, and connect themselves to
+this driver: there is nothing to bind in the Connections tab, whichever driver
+is added first.
 
 ## Driver Suite
 
@@ -270,7 +272,16 @@ connect (or restart them, or run `SetOption19 0` on them).
 ### Update Drivers
 
 Updates all MQTT drivers to the latest release on GitHub, regardless of the
-current version.
+current version. The log shows each step:
+
+- `Update started: ...` with the installed version of each driver;
+- `Update: vYYYYMMDDNN downloaded and sent to the controller`, after which the
+  drivers restart;
+- after the restart, `Update to vYYYYMMDDNN succeeded` with the new version, or
+  `Update to vYYYYMMDDNN FAILED` naming each driver still on another version;
+- `Update FAILED: ...` if GitHub could not be reached or a download failed.
+
+Automatic updates report the result the same way after the restart.
 
 ## Programming
 

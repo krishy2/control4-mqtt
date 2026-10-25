@@ -23,10 +23,12 @@ require("drivers-common-public.global.timer")
 local log = require("lib.logging")
 local persist = require("lib.persist")
 local githubUpdater = require("lib.github-updater")
+local AutoBind = require("mqtt.autobind")
 local Tasmota = require("mqtt.tasmota")
 local Broker = require("mqtt.server.broker")
 local C4Server = require("mqtt.server.c4_server")
 
+local UPDATE_PERSIST_KEY = "PendingUpdate"
 local MODE_EXTERNAL = "External"
 local MODE_BUILTIN = "Built-in"
 
@@ -539,6 +541,18 @@ function OnDriverLateInit()
   updateModeVisibility()
   updateTasmotaProperty()
   Connect()
+
+  -- After an update: say whether every driver got the new version, once the
+  -- other drivers have had time to restart.
+  if persist:get(UPDATE_PERSIST_KEY, nil) ~= nil then
+    SetTimer("UpdateVerify", 30 * ONE_SECOND, VerifyDriverUpdate)
+  end
+
+  -- Bind MQTT Light and MQTT General drivers that are not connected yet
+  local ok, err = pcall(AutoBind.connectAll)
+  if not ok then
+    log:warn("Could not connect drivers to this broker automatically: %s", err)
+  end
 end
 
 function OnDriverDestroyed()
@@ -948,23 +962,111 @@ end
 -- Action: Update Drivers
 function EC.UpdateDrivers()
   log:trace("EC.UpdateDrivers()")
-  log:print("Updating drivers")
-  UpdateDrivers(true)
+  UpdateDrivers(true, true)
 end
 
---- Update the driver from the GitHub repository.
---- @param forceUpdate? boolean Force the update even if the driver is up to date (optional).
-function UpdateDrivers(forceUpdate)
-  log:trace("UpdateDrivers(%s)", forceUpdate)
+--- Installed MQTT drivers and their versions, as "cp_mqtt_broker.c4z 2026102502, ...".
+--- @return string[] filenames, table<string, string> versions
+local function installedDrivers()
+  local files, versions = {}, {}
+  for _, filename in ipairs(DRIVER_FILENAMES) do
+    if not IsEmpty(C4:GetDevicesByC4iName(filename) or {}) then
+      files[#files + 1] = filename
+      local ok, v = pcall(GetDriverVersion, filename)
+      versions[filename] = ok and v or nil
+    end
+  end
+  return files, versions
+end
+
+--- After an update was sent: check that every driver now has the release's
+--- version, and say so. Runs on the next start of this driver (the update
+--- restarts it) or, when this driver was not part of the update, after a delay.
+function VerifyDriverUpdate()
+  local pending = persist:get(UPDATE_PERSIST_KEY, nil)
+  if type(pending) ~= "table" then
+    return
+  end
+  persist:delete(UPDATE_PERSIST_KEY)
+  CancelTimer("UpdateVerify")
+  local _, versions = installedDrivers()
+  local ok, failed = {}, {}
+  for _, filename in ipairs(pending.drivers or {}) do
+    local v = versions[filename]
+    if v == pending.version then
+      ok[#ok + 1] = filename
+    else
+      failed[#failed + 1] = string.format("%s is on %s", filename, tostring(v or "unknown"))
+    end
+  end
+  if IsEmpty(failed) then
+    log:print("Update to %s succeeded: %s on version %s", pending.tag, table.concat(ok, ", "), pending.version)
+  else
+    log:print(
+      "Update to %s FAILED: %s (expected %s). Run Update Drivers again or install the .c4z files from GitHub.",
+      pending.tag,
+      table.concat(failed, ", "),
+      pending.version
+    )
+  end
+end
+
+local function errorText(err)
+  if type(err) == "table" then
+    local parts = {}
+    for _, e in pairs(err) do
+      parts[#parts + 1] = tostring(e)
+    end
+    return table.concat(parts, "; ")
+  end
+  return tostring(err)
+end
+
+--- Update the drivers from the GitHub repository.
+--- @param forceUpdate? boolean Reinstall even if the drivers are up to date (optional).
+--- @param manual? boolean Asked for by the user: every step goes to the log (optional).
+function UpdateDrivers(forceUpdate, manual)
+  log:trace("UpdateDrivers(%s, %s)", forceUpdate, manual)
+  local say = function(...)
+    if manual then
+      log:print(...)
+    else
+      log:info(...)
+    end
+  end
+  local files, versions = installedDrivers()
+  local current = {}
+  for _, filename in ipairs(files) do
+    current[#current + 1] = string.format("%s %s", filename, tostring(versions[filename] or "?"))
+  end
+  say(
+    "Update started: checking %s for the latest release (installed: %s)",
+    DRIVER_GITHUB_REPO,
+    table.concat(current, ", ")
+  )
   githubUpdater
     :updateAll(DRIVER_GITHUB_REPO, DRIVER_FILENAMES, Properties["Update Channel"] == "Prerelease", forceUpdate)
     :next(function(updatedDrivers)
-      if not IsEmpty(updatedDrivers) then
-        log:info("Updated driver(s): %s", table.concat(updatedDrivers, ","))
-      else
-        log:info("No driver updates available")
+      local release = githubUpdater.lastRelease or {}
+      local tag = tostring(release.tag_name or "?")
+      if IsEmpty(updatedDrivers) then
+        say("Update finished: already on the latest release %s, nothing to install", tag)
+        return
       end
+      local version = tag:gsub("^[vV]", "")
+      persist:set(UPDATE_PERSIST_KEY, { tag = tag, version = version, drivers = updatedDrivers })
+      log:print(
+        "Update: %s downloaded and sent to the controller (%s); the drivers restart now",
+        tag,
+        table.concat(updatedDrivers, ", ")
+      )
+      -- If this driver is not restarted by the update, check once the others had time.
+      SetTimer("UpdateVerify", 2 * ONE_MINUTE, VerifyDriverUpdate)
     end, function(error)
-      log:error("An error occurred updating drivers: %s", error)
+      local text = errorText(error)
+      if manual then
+        log:print("Update FAILED: %s", text)
+      end
+      log:error("An error occurred updating drivers: %s", text)
     end)
 end

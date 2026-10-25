@@ -18,6 +18,19 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102503 - 2026-10-25
+
+### Added
+
+- MQTT Light and MQTT General connect themselves to the MQTT Broker driver; no
+  binding to make in Composer. A light added before the broker is connected by
+  the broker when it starts. Bindings made by hand are left alone.
+- Picking a Tasmota Device renames the MQTT Light after it (the Tasmota
+  DeviceName, or the output's FriendlyName on devices with several outputs).
+- Update Drivers reports in the log whether the update worked: after the drivers
+  restart, `Update to vX succeeded`, or `FAILED` with the drivers that are still
+  on another version. Errors reaching GitHub are logged too.
+
 ## v2026102502 - 2026-10-25
 
 ### Fixed

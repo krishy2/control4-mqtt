@@ -1325,6 +1325,50 @@ function C4:GetDeviceDisplayName(deviceId)
   -- Absent or nameless: return no value, matching the controller.
 end
 
+--- @return table|nil devices { [deviceId] = name } of every device running the
+--- driver file, nil when there are none (as a controller answers).
+function C4:GetDevicesByC4iName(filename)
+  local devices, found = {}, false
+  for deviceId, device in pairs(shim_devices) do
+    if not device.hidden and device.driverFileName == filename then
+      devices[deviceId] = device.deviceName or ""
+      found = true
+    end
+  end
+  return found and devices or nil
+end
+
+local renames = {}
+
+--- Renames a device in the shim's device table and records the call.
+function C4:RenameDevice(deviceId, name)
+  renames[#renames + 1] = { deviceId = tonumber(deviceId), name = name }
+  local device = shim_devices[tonumber(deviceId)]
+  if device then
+    device.deviceName = name
+  end
+end
+
+--- The C4:RenameDevice calls so far.
+function ShimRenames()
+  return renames
+end
+
+function ShimResetRenames()
+  renames = {}
+end
+
+local proxy_devices = nil
+
+--- The running driver's proxy device(s), as ShimSetProxyDevices left them.
+function C4:GetProxyDevices()
+  return proxy_devices
+end
+
+function ShimSetProxyDevices(value)
+  proxy_devices = value
+end
+
 function C4:GetDeviceVariables(deviceId)
   local device = shim_devices[tonumber(deviceId)]
   if device and device.variables then

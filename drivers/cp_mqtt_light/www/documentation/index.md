@@ -97,7 +97,8 @@ up immediately, no driver reload needed.
 1. Install the MQTT Broker driver and connect it to your broker (see its
    documentation).
 1. Install `cp_mqtt_light.c4z` and add one **MQTT Light** driver per light. It
-   binds to the MQTT Broker automatically.
+   connects itself to the MQTT Broker driver, so there is nothing to bind in the
+   Connections tab. (A binding you made by hand is left as it is.)
 1. Fill in the topics for the abilities your light has.
 
 ## Driver Setup
@@ -162,6 +163,12 @@ the MQTT Broker driver has found through Tasmota discovery, for example
 `Kitchen [tasmota_A1B2C3] RGBCCT light`. Picking one fills in every setting
 below: topics, value paths, `POWER<n>`, dimmer scale, color temperature range,
 color format, state request and Online/Offline.
+
+Picking a device also renames the light in Composer and Navigator: a bulb gets
+its Tasmota DeviceName (`Hall Lamp`); an output of a device with several gets
+its own FriendlyName, or the DeviceName and the output (`Kitchen RGBCCT light`).
+Tasmota's default names (`Tasmota`, `Tasmota2`, ...) are skipped. This happens
+only when you pick a device, so a name you change afterwards stays.
 
 The light keeps following the device: if its topic or setup changes, the
 settings are updated. Choose `(Manual)` to stop following and keep the settings

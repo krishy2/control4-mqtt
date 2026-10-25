@@ -17,6 +17,7 @@ local events = require("lib.events")
 local values = require("lib.values")
 local constants = require("constants")
 
+local AutoBind = require("mqtt.autobind")
 local MqttDevice = require("mqtt.entities.device")
 local MqttLight = require("mqtt.light")
 local Tasmota = require("mqtt.tasmota")
@@ -35,6 +36,8 @@ local MANUAL = "(Manual)"
 local tasmotaChoices = {}
 --- The chosen device and output, kept across restarts: { mac, load, label }
 local tasmotaSelection = nil
+--- Set when an output is picked: rename the light once its details arrive.
+local renamePending = nil
 local updateTasmotaList, setTasmotaNotes
 
 --- Properties that make up the light configuration. A change to any of them
@@ -332,6 +335,19 @@ end
 -- Driver lifecycle
 -----------------------------------------------------------------------
 
+--- Bind to the MQTT Broker driver unless that is already done, now and once
+--- more shortly after, in case the broker driver starts after this one.
+local function connectToBroker()
+  local function try()
+    local ok, err = pcall(AutoBind.connectSelf, MQTT_BINDING)
+    if not ok then
+      log:warn("Could not connect to the MQTT Broker driver automatically: %s", err)
+    end
+  end
+  try()
+  SetTimer("AutoBind", 15 * ONE_SECOND, try)
+end
+
 function OnDriverInit()
   C4:AllowExecute(true)
   gInitialized = false
@@ -384,6 +400,8 @@ function OnDriverLateInit()
   tasmotaSelection = persist:get(TASMOTA_PERSIST_KEY, nil)
   updateTasmotaList()
   setTasmotaNotes("")
+
+  connectToBroker()
 
   -- Request current broker status
   SendToProxy(MQTT_BINDING, "GET_STATUS", {}, "NOTIFY")
@@ -547,6 +565,45 @@ updateTasmotaList = function()
 end
 
 --- Fill in every setting for the chosen device and output.
+--- Rename the light (as Composer and Navigator show it) after a Tasmota output.
+--- @param dev table parsed device (mqtt.tasmota)
+--- @param loadId string
+local function renameAfterTasmota(dev, loadId)
+  local name = Tasmota.loadName(dev, loadId)
+  if IsEmpty(name) then
+    return
+  end
+  if not C4.RenameDevice then
+    log:warn("This controller cannot rename drivers; name the light '%s' in Composer", name)
+    return
+  end
+  local me = tonumber(C4:GetDeviceID())
+  local ids = { me }
+  -- The proxy is what rooms, Composer's tree and Navigator show.
+  local proxies = C4.GetProxyDevices and C4:GetProxyDevices() or nil
+  if type(proxies) == "table" then
+    for id in pairs(proxies) do
+      ids[#ids + 1] = tonumber(id)
+    end
+  elseif proxies ~= nil then
+    -- A number, or a comma-separated list
+    for id in tostring(proxies):gmatch("%d+") do
+      ids[#ids + 1] = tonumber(id)
+    end
+  end
+  local seen = {}
+  for _, id in ipairs(ids) do
+    if id and not seen[id] then
+      seen[id] = true
+      if C4:GetDeviceDisplayName(id) ~= name then
+        C4:RenameDevice(id, name)
+      end
+    end
+  end
+  log:setLogName(name)
+  log:print("Renamed the light to '%s' after Tasmota device %s", name, dev.topic)
+end
+
 --- @param dev table parsed device (mqtt.tasmota)
 local function applyTasmotaDevice(dev)
   local selection = tasmotaSelection
@@ -576,6 +633,14 @@ local function applyTasmotaDevice(dev)
   log:info("Applied Tasmota device %s (%s): %d settings changed", dev.topic, selection.load, #changed)
   setTasmotaNotes(table.concat(Tasmota.notes(dev), " "))
 
+  if renamePending and renamePending.mac == selection.mac and renamePending.load == selection.load then
+    renamePending = nil
+    local ok, renameErr = pcall(renameAfterTasmota, dev, selection.load)
+    if not ok then
+      log:warn("Could not rename the light: %s", renameErr)
+    end
+  end
+
   -- Availability has its own handler (events, subscription); then everything else.
   OnPropertyChanged("Availability Topic")
   OnPropertyChanged("Availability Value Path")
@@ -601,8 +666,14 @@ function OPC.Tasmota_Device(propertyValue)
   if choice == nil then
     return -- the stored selection, shown before the list arrived
   end
+  local previous = tasmotaSelection
   tasmotaSelection = { mac = choice.mac, load = choice.load, label = propertyValue }
   persist:set(TASMOTA_PERSIST_KEY, tasmotaSelection)
+  -- A newly picked output names the light once its details arrive; the list
+  -- refreshing (or the same output picked again) leaves a name given by hand.
+  if previous == nil or previous.mac ~= choice.mac or previous.load ~= choice.load then
+    renamePending = { mac = choice.mac, load = choice.load }
+  end
   requestTasmotaDevice(choice.mac)
 end
 

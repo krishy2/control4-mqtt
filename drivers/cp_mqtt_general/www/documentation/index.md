@@ -88,7 +88,8 @@ with any MQTT-based system.
 
 1. Ensure the MQTT Broker driver is installed and connected.
 1. Add the "MQTT General" driver to your project.
-1. In the Connections tab, bind the MQTT General driver to the MQTT Broker.
+1. It connects itself to the MQTT Broker driver; nothing to bind in the
+   Connections tab. (A binding you made by hand is left as it is.)
 1. Configure global availability settings (optional).
 1. Add devices and variables, then configure their MQTT topics.
 

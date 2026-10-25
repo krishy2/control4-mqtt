@@ -18,6 +18,7 @@ local persist = require("lib.persist")
 local values = require("lib.values")
 
 -- MQTT entity modules
+local AutoBind = require("mqtt.autobind")
 local MqttDevice = require("mqtt.entities.device")
 local MqttRelay = require("mqtt.entities.relay")
 local MqttContact = require("mqtt.entities.contact")
@@ -605,6 +606,19 @@ end
 -- Driver lifecycle
 -----------------------------------------------------------------------
 
+--- Bind to the MQTT Broker driver unless that is already done, now and once
+--- more shortly after, in case the broker driver starts after this one.
+local function connectToBroker()
+  local function try()
+    local ok, err = pcall(AutoBind.connectSelf, MQTT_BINDING)
+    if not ok then
+      log:warn("Could not connect to the MQTT Broker driver automatically: %s", err)
+    end
+  end
+  try()
+  SetTimer("AutoBind", 15 * ONE_SECOND, try)
+end
+
 function OnDriverInit()
   C4:AllowExecute(true)
   gInitialized = false
@@ -649,6 +663,8 @@ function OnDriverLateInit()
   -- Update property visibility
   updateAvailabilityPropertyVisibility()
   updateItemProperties()
+
+  connectToBroker()
 
   -- Request current broker status
   SendToProxy(MQTT_BINDING, "GET_STATUS", {}, "NOTIFY")

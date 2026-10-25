@@ -260,6 +260,46 @@ function Tasmota.load(dev, loadId)
   return nil
 end
 
+--- A Control4 name for one output of a device.
+---
+--- One output: the Tasmota DeviceName. Several outputs: the output's own
+--- FriendlyName when it has one, otherwise the DeviceName followed by the
+--- output ("Kitchen RGB light", "Kitchen Relay 2"). Tasmota's default names
+--- ("Tasmota", "Tasmota2", ...) are passed over for the device topic.
+--- @param dev table
+--- @param loadId string
+--- @return string|nil
+function Tasmota.loadName(dev, loadId)
+  local load = Tasmota.load(dev, loadId)
+  if load == nil then
+    return nil
+  end
+  local function given(v)
+    v = str(v)
+    if v == nil or not v:match("%S") or v:match("^Tasmota%d*$") then
+      return nil
+    end
+    return v:match("^%s*(.-)%s*$")
+  end
+  local names = type(dev.friendlyNames) == "table" and dev.friendlyNames or {}
+  local base = given(dev.name) or given(names[1]) or str(dev.topic) or "Tasmota"
+  if #Tasmota.loads(dev) == 1 then
+    return base
+  end
+  local friendly = given(names[load.index])
+  if friendly ~= nil and friendly ~= base then
+    -- An RGB and white pair given the same FriendlyName still need two names.
+    if load.kind == "color" or load.kind == "white" then
+      local other = given(names[load.kind == "color" and load.index + 1 or load.index - 1])
+      if other == friendly then
+        return friendly .. " " .. load.label
+      end
+    end
+    return friendly
+  end
+  return base .. " " .. load.label:gsub("%s*'.*'$", "")
+end
+
 --- Things on the device that should be changed for the light to work well.
 --- @param dev table
 --- @return string[]

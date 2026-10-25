@@ -94,6 +94,8 @@ function GitHubUpdater:getOutdatedDriverAssets(repo, driverFilenames, includePre
   end
 
   return self:getLatestRelease(repo, includePrereleases):next(function(latestRelease)
+    -- Kept so callers can say which release was checked or installed.
+    self.lastRelease = latestRelease
     if not forceUpdate and latestRelease.version <= minDriverVersion then
       return {}
     end
@@ -194,6 +196,7 @@ end
 --- @return Deferred<string[], string|table<number, string>> updatedDrivers Deferred resolving to a list of updated driver filenames, or rejected with an error message or table.
 function GitHubUpdater:updateAll(repo, driverFilenames, includePrereleases, forceUpdate)
   log:trace("GitHubUpdater:updateAll(%s, %s, %s, %s)", repo, driverFilenames, includePrereleases, forceUpdate)
+  self.lastRelease = nil
   -- Only update drivers that are already installed.
   local installedDriverFilenames = {}
   for _, driverFilename in pairs(driverFilenames) do

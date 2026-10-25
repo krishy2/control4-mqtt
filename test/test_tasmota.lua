@@ -237,4 +237,44 @@ T.eq(
 )
 T.eq("unknown load id", Tasmota.lightProperties(bulb, "relay9"), nil)
 
+T.section("A Control4 name for each output")
+local function nameOf(opts, loadId)
+  return Tasmota.loadName(Tasmota.parse(discovery(opts)), loadId)
+end
+T.eq("a bulb: its device name", nameOf({ name = "Hall Lamp", lt = 5, rl = { 2 } }, "light1"), "Hall Lamp")
+T.eq(
+  "default FriendlyName on a bulb is not used",
+  nameOf({ name = "Hall Lamp", fn = { "Tasmota" }, lt = 5, rl = { 2 } }, "light1"),
+  "Hall Lamp"
+)
+T.eq(
+  "DeviceName left at the default: the topic",
+  nameOf({ name = "Tasmota", fn = { "Tasmota" }, topic = "hall_lamp", lt = 2, rl = { 2 } }, "light1"),
+  "hall_lamp"
+)
+T.eq(
+  "a relay and a light: device name and output",
+  nameOf({ name = "Kitchen", fn = { "Kitchen" }, lt = 5, rl = { 1, 2 } }, "light2"),
+  "Kitchen RGBCCT light"
+)
+T.eq(
+  "an output with its own FriendlyName",
+  nameOf({ name = "Kitchen", fn = { "Kitchen", "Island" }, lt = 2, rl = { 1, 2 } }, "light2"),
+  "Island"
+)
+T.eq(
+  "relay named by its FriendlyName",
+  nameOf({ name = "Kitchen", fn = { "Fan", "Island" }, lt = 2, rl = { 1, 2 } }, "relay1"),
+  "Fan"
+)
+T.eq(
+  "default FriendlyName on output 2 is not used",
+  nameOf({ name = "Kitchen", fn = { "Kitchen", "Tasmota2" }, lt = 2, rl = { 1, 2 } }, "light2"),
+  "Kitchen CCT light"
+)
+local split = { name = "Strip", fn = { "Strip", "Strip" }, lt = 5, lk = 0, rl = { 2, 2 } }
+T.eq("split RGB part", nameOf(split, "light1"), "Strip RGB light")
+T.eq("split white part", nameOf(split, "light2"), "Strip CCT light")
+T.eq("no such output", nameOf(split, "relay9"), nil)
+
 T.finish()

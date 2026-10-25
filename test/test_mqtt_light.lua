@@ -456,6 +456,13 @@ C4.UpdateProperty = function(_, name, value)
   propertyWrites[name] = value
 end
 reset()
+-- A project with a broker driver (900) and this light, not yet connected.
+ShimSetDevices({
+  [900] = { deviceName = "MQTT Broker", driverFileName = "cp_mqtt_broker.c4z" },
+  [12345] = { deviceName = "MQTT Light", driverFileName = "cp_mqtt_light.c4z" },
+  [12346] = { deviceName = "MQTT Light", driverFileName = "light_v2.c4i" },
+})
+ShimSetProxyDevices(12346)
 -- T.capture returns pcall's result itself; wrapping it in another pcall would hide errors.
 local ok, err = T.capture(function()
   dofile("drivers/cp_mqtt_light/driver.lua")
@@ -463,6 +470,8 @@ local ok, err = T.capture(function()
   OnDriverLateInit()
 end)
 T.check("driver init runs without error", ok, err)
+T.eq("it connects itself to the broker", C4:GetBoundProviderDevice(12345, 5002), 900)
+T.eq("the light is not renamed at start-up", #ShimRenames(), 0)
 T.eq("no driver code leaks into globals", { rawget(_G, "tasmotaSelection"), rawget(_G, "tasmotaChoices") }, {})
 local capsMsg = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
 T.check("capabilities are sent at startup", capsMsg ~= nil)
@@ -640,6 +649,10 @@ T.check("subscribes to RESULT", subs2["stat/tasmota_kitchen/RESULT"])
 T.check("and to LWT", subs2["tele/tasmota_kitchen/LWT"])
 T.eq("asks the device for its state", #published("cmnd/tasmota_kitchen/STATE"), 1)
 T.contains("Capabilities property", propertyWrites["Capabilities"], "Color Temp")
+T.eq("picking the output renames the light and its proxy", ShimRenames(), {
+  { deviceId = 12345, name = "Kitchen RGBCCT light" },
+  { deviceId = 12346, name = "Kitchen RGBCCT light" },
+})
 
 reset()
 T.capture(function()
@@ -668,6 +681,7 @@ end)
 T.eq("topics follow the new device topic", Properties["Power Command Topic"], "cmnd/kitchen_light/POWER2")
 T.eq("a Tasmota fade topic follows too", Properties["Transition Command Topic"], "cmnd/kitchen_light/Speed")
 T.eq("the dropdown shows the new name", lists["Tasmota Device"].current, "Kitchen [kitchen_light] RGBCCT light")
+T.eq("the device changing does not rename the light again", #ShimRenames(), 2)
 
 reset()
 T.capture(function()
@@ -694,6 +708,11 @@ T.capture(function()
   ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "84F3EBA1B2C3" })
 end)
 T.eq("and still followed", #sentTo("GET_TASMOTA_DEVICE"), 1)
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "84F3EBA1B2C3", device = JSON:encode(renamed) })
+end)
+T.eq("nor does a restart", #ShimRenames(), 2)
+T.eq("a restart does not bind a second time", #ShimConnections(), 1)
 
 -------------------------------------------------------------------------------
 T.section("Back to Manual")
