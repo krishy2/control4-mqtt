@@ -18,9 +18,7 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
-<!-- #ifndef DRIVERCENTRAL -->
-
-## Unreleased
+## v20261030 - 2026-10-25
 
 ### Added
 
@@ -64,8 +62,6 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Fixed the Device Available, Device Unavailable and event item Triggered events
   leaving the device's name out of their script title in Composer Pro. The title
   now names the device.
-
-<!-- #endif -->
 
 ## v20260415 - 2026-04-15
 
