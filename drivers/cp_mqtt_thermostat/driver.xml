@@ -1,0 +1,529 @@
+<devicedata>
+  <name>MQTT Thermostat</name>
+  <version/>
+  <manufacturer>Control Pro</manufacturer>
+  <model>MQTT Thermostat</model>
+  <creator>Chris Toth</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
+  <created>10/26/2026 12:00:00 AM</created>
+  <modified/>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Comfort</category>
+  </composer_categories>
+  <conditionals/>
+  <events/>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <!-- Global Availability Settings -->
+      <property>
+        <name>Availability Settings</name>
+        <type>LABEL</type>
+        <default>Availability Settings</default>
+      </property>
+      <property>
+        <name>Availability Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to subscribe for device availability (optional)</description>
+      </property>
+      <property>
+        <name>Availability Topic Value</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Raw value received from the availability topic</description>
+      </property>
+      <property>
+        <name>Availability Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to extract availability value (e.g., "$.status"). Leave empty to use raw payload.</description>
+      </property>
+      <property>
+        <name>Availability Value Path Result</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Result of JSONPath extraction for availability</description>
+      </property>
+      <property>
+        <name>Availability Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current availability status</description>
+      </property>
+      <property>
+        <name>Payload Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is available (if only this is set, other values mean unavailable)</description>
+      </property>
+      <property>
+        <name>Payload Not Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is not available (if only this is set, other values mean available)</description>
+      </property>
+      <property>
+        <name>Thermostat Settings</name>
+        <type>LABEL</type>
+        <default>Thermostat Settings</default>
+      </property>
+      <property>
+        <name>Capabilities</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>What the thermostat can do with the current settings</description>
+      </property>
+      <property>
+        <name>Thermostat State</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>State as reported to Control4</description>
+      </property>
+      <property>
+        <name>Device Temperature Scale</name>
+        <type>LIST</type>
+        <default>Celsius</default>
+        <items>
+          <item>Celsius</item>
+          <item>Fahrenheit</item>
+        </items>
+        <description>The scale the device reports and takes temperatures in; Control4 converts for the user</description>
+      </property>
+      <property>
+        <name>Temperature Multiplier</name>
+        <type>STRING</type>
+        <default>1</default>
+        <description>Device value for one degree: 10 for devices that send 215 for 21.5 (TuyaMCU), 1 otherwise</description>
+      </property>
+      <property>
+        <name>Setpoint Min</name>
+        <type>STRING</type>
+        <default/>
+        <description>Lowest setpoint, in the device scale (default 5 °C / 40 °F)</description>
+      </property>
+      <property>
+        <name>Setpoint Max</name>
+        <type>STRING</type>
+        <default/>
+        <description>Highest setpoint, in the device scale (default 35 °C / 95 °F)</description>
+      </property>
+      <property>
+        <name>Setpoint Step</name>
+        <type>STRING</type>
+        <default/>
+        <description>Setpoint step, in the device scale (default 0.5 °C / 1 °F)</description>
+      </property>
+      <property>
+        <name>State Request Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional: topic that makes the device report its state, sent when the broker connects and the device comes online</description>
+      </property>
+      <property>
+        <name>State Request Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload for the State Request Topic</description>
+      </property>
+      <property>
+        <name>Optimistic</name>
+        <type>LIST</type>
+        <default>Auto</default>
+        <items>
+          <item>Auto</item>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Assume a command worked (Auto: yes when the ability has no state topic)</description>
+      </property>
+      <property>
+        <name>QoS</name>
+        <type>LIST</type>
+        <default>0</default>
+        <items>
+          <item>0</item>
+          <item>1</item>
+          <item>2</item>
+        </items>
+        <description>MQTT Quality of Service for commands</description>
+      </property>
+      <property>
+        <name>Retain</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Retain command messages on the broker</description>
+      </property>
+      <property>
+        <name>Temperature</name>
+        <type>LABEL</type>
+        <default>Temperature</default>
+      </property>
+      <property>
+        <name>Temperature State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the current temperature (Tasmota: tele/&lt;topic&gt;/SENSOR)</description>
+      </property>
+      <property>
+        <name>Temperature Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the temperature (Tasmota: e.g. $.DS18B20.Temperature)</description>
+      </property>
+      <property>
+        <name>Humidity State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the current humidity. Filling it in shows humidity in Control4.</description>
+      </property>
+      <property>
+        <name>Humidity Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the humidity (Tasmota: e.g. $.AM2301.Humidity)</description>
+      </property>
+      <property>
+        <name>Heat Setpoint</name>
+        <type>LABEL</type>
+        <default>Heat Setpoint</default>
+      </property>
+      <property>
+        <name>Heat Setpoint State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the heat setpoint</description>
+      </property>
+      <property>
+        <name>Heat Setpoint Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the heat setpoint</description>
+      </property>
+      <property>
+        <name>Heat Setpoint Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to send the heat setpoint to. Filling it in lets Control4 heat. The same topic for heat and cool makes a single-setpoint thermostat.</description>
+      </property>
+      <property>
+        <name>Heat Setpoint Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload template; {value} is the setpoint (default {value}; TuyaMCU e.g. 16,{value})</description>
+      </property>
+      <property>
+        <name>Cool Setpoint</name>
+        <type>LABEL</type>
+        <default>Cool Setpoint</default>
+      </property>
+      <property>
+        <name>Cool Setpoint State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the cool setpoint</description>
+      </property>
+      <property>
+        <name>Cool Setpoint Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the cool setpoint</description>
+      </property>
+      <property>
+        <name>Cool Setpoint Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to send the cool setpoint to. Filling it in lets Control4 cool. The same topic for heat and cool makes a single-setpoint thermostat.</description>
+      </property>
+      <property>
+        <name>Cool Setpoint Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload template; {value} is the setpoint (default {value}; TuyaMCU e.g. 16,{value})</description>
+      </property>
+      <property>
+        <name>HVAC Mode</name>
+        <type>LABEL</type>
+        <default>HVAC Mode</default>
+      </property>
+      <property>
+        <name>Mode State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the HVAC mode</description>
+      </property>
+      <property>
+        <name>Mode Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the mode</description>
+      </property>
+      <property>
+        <name>Mode Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to set the HVAC mode</description>
+      </property>
+      <property>
+        <name>Mode Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload template; {value} is the device value from Mode Values</description>
+      </property>
+      <property>
+        <name>Mode Values</name>
+        <type>STRING</type>
+        <default/>
+        <description>Control4 mode = device value, comma separated, e.g. Off=0,Heat=1,Cool=2,Auto=3. Empty: off, heat, cool, auto, fan_only, dry. The modes listed are the ones Control4 offers.</description>
+      </property>
+      <property>
+        <name>Power</name>
+        <type>LABEL</type>
+        <default>Power</default>
+      </property>
+      <property>
+        <name>Power State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting on/off. With a Power Command Topic, mode Off switches the device off.</description>
+      </property>
+      <property>
+        <name>Power Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the on/off state</description>
+      </property>
+      <property>
+        <name>Power Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to switch the device on and off</description>
+      </property>
+      <property>
+        <name>Power Payload On</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload to switch on (default ON)</description>
+      </property>
+      <property>
+        <name>Power Payload Off</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload to switch off (default OFF)</description>
+      </property>
+      <property>
+        <name>Power State On</name>
+        <type>STRING</type>
+        <default/>
+        <description>Value that means on (default ON, true, 1)</description>
+      </property>
+      <property>
+        <name>Power State Off</name>
+        <type>STRING</type>
+        <default/>
+        <description>Value that means off (default OFF, false, 0)</description>
+      </property>
+      <property>
+        <name>HVAC State</name>
+        <type>LABEL</type>
+        <default>HVAC State</default>
+      </property>
+      <property>
+        <name>HVAC State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting whether it is heating or cooling (a relay state works: ON means heating)</description>
+      </property>
+      <property>
+        <name>HVAC State Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the HVAC state</description>
+      </property>
+      <property>
+        <name>HVAC State Values</name>
+        <type>STRING</type>
+        <default/>
+        <description>Control4 state = device value, e.g. Heating=ON,Idle=OFF. Empty: heating, cooling, idle, off, or a relay ON/OFF.</description>
+      </property>
+      <property>
+        <name>Fan</name>
+        <type>LABEL</type>
+        <default>Fan</default>
+      </property>
+      <property>
+        <name>Fan Mode State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the fan mode</description>
+      </property>
+      <property>
+        <name>Fan Mode Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the fan mode</description>
+      </property>
+      <property>
+        <name>Fan Mode Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to set the fan mode. Filling it in offers fan modes in Control4.</description>
+      </property>
+      <property>
+        <name>Fan Mode Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload template; {value} is the device value from Fan Mode Values</description>
+      </property>
+      <property>
+        <name>Fan Mode Values</name>
+        <type>STRING</type>
+        <default/>
+        <description>Control4 fan mode = device value, e.g. Auto=0,Low=1,Medium=2,High=3. Empty: auto, low, medium, high.</description>
+      </property>
+    </properties>
+    <actions>
+      <action>
+        <name>Request State</name>
+        <command>RequestState</command>
+      </action>
+    </actions>
+  </config>
+  <capabilities>
+    <can_heat>False</can_heat>
+    <can_cool>False</can_cool>
+    <can_do_auto>False</can_do_auto>
+    <has_humidity>False</has_humidity>
+    <has_single_setpoint>False</has_single_setpoint>
+    <can_preset>False</can_preset>
+    <can_preset_schedule>False</can_preset_schedule>
+    <has_temperature>True</has_temperature>
+    <has_connection_status>True</has_connection_status>
+    <current_temperature_min_c>-40</current_temperature_min_c>
+    <current_temperature_max_c>100</current_temperature_max_c>
+    <current_temperature_min_f>-40</current_temperature_min_f>
+    <current_temperature_max_f>212</current_temperature_max_f>
+    <current_temperature_resolution_c>0.1</current_temperature_resolution_c>
+    <current_temperature_resolution_f>0.1</current_temperature_resolution_f>
+    <setpoint_heat_resolution_c>0.5</setpoint_heat_resolution_c>
+    <setpoint_heat_resolution_f>1</setpoint_heat_resolution_f>
+    <setpoint_cool_resolution_c>0.5</setpoint_cool_resolution_c>
+    <setpoint_cool_resolution_f>1</setpoint_cool_resolution_f>
+    <setpoint_single_resolution_c>0.5</setpoint_single_resolution_c>
+    <setpoint_single_resolution_f>1</setpoint_single_resolution_f>
+    <setpoint_heat_min_c>5</setpoint_heat_min_c>
+    <setpoint_heat_max_c>35</setpoint_heat_max_c>
+    <setpoint_heat_min_f>40</setpoint_heat_min_f>
+    <setpoint_heat_max_f>95</setpoint_heat_max_f>
+    <setpoint_cool_min_c>5</setpoint_cool_min_c>
+    <setpoint_cool_max_c>35</setpoint_cool_max_c>
+    <setpoint_cool_min_f>40</setpoint_cool_min_f>
+    <setpoint_cool_max_f>95</setpoint_cool_max_f>
+    <setpoint_single_min_c>5</setpoint_single_min_c>
+    <setpoint_single_max_c>35</setpoint_single_max_c>
+    <setpoint_single_min_f>40</setpoint_single_min_f>
+    <setpoint_single_max_f>95</setpoint_single_max_f>
+    <can_inc_dec_setpoints>True</can_inc_dec_setpoints>
+    <can_change_scale>True</can_change_scale>
+    <has_extras>False</has_extras>
+    <has_vacation_mode>False</has_vacation_mode>
+    <has_remote_sensor>False</has_remote_sensor>
+    <fan_modes/>
+    <hvac_modes>Off,Heat,Cool,Auto,Fan Only,Dry</hvac_modes>
+    <hvac_states>Off,Heating,Cooling,Idle,Drying,Fan Only</hvac_states>
+    <hold_modes/>
+  </capabilities>
+  <proxies>
+    <proxy proxybindingid="5001" primary="True" name="MQTT Thermostat">thermostatV2</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Thermostat</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>THERMOSTAT</classname>
+        </class>
+      </classes>
+      <hidden>True</hidden>
+    </connection>
+    <connection>
+      <id>5002</id>
+      <facing>6</facing>
+      <connectionname>MQTT Broker</connectionname>
+      <type>2</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>CP_MQTT_BROKER</classname>
+          <autobind>True</autobind>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+  </connections>
+</devicedata>

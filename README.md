@@ -23,14 +23,15 @@ is added first.
 
 ## Driver Suite
 
-The MQTT driver suite consists of four drivers:
+The MQTT driver suite consists of five drivers:
 
-| Driver           | Direction     | Purpose                                                                                         |
-| ---------------- | ------------- | ----------------------------------------------------------------------------------------------- |
-| **MQTT Broker**  | N/A           | The MQTT connection: an external broker, or the built-in one                                    |
-| **MQTT General** | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
-| **MQTT Light**   | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)            |
-| **MQTT Shutter** | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)         |
+| Driver              | Direction     | Purpose                                                                                            |
+| ------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
+| **MQTT Broker**     | N/A           | The MQTT connection: an external broker, or the built-in one                                       |
+| **MQTT General**    | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics)    |
+| **MQTT Light**      | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)               |
+| **MQTT Shutter**    | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)            |
+| **MQTT Thermostat** | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity) |
 
 **Typical Setup:**
 
@@ -38,6 +39,7 @@ The MQTT driver suite consists of four drivers:
 1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
 1. Add one **MQTT Shutter** per shutter or blind (Tasmota, Shelly, Zigbee2MQTT,
    ...)
+1. Add one **MQTT Thermostat** per thermostat (Tasmota, TuyaMCU, ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
 
@@ -88,8 +90,8 @@ The MQTT driver suite consists of four drivers:
    [GitHub](https://github.com/krishy2/control4-mqtt/releases/latest).
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
-   the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z` and
-   `cp_mqtt_shutter.c4z` drivers.
+   the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`,
+   `cp_mqtt_shutter.c4z` and `cp_mqtt_thermostat.c4z` drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
@@ -380,6 +382,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026102600 - 2026-10-26
+
+### Added
+
+- MQTT Thermostat driver (`cp_mqtt_thermostat.c4z`): one MQTT thermostat as a
+  Control4 thermostat (thermostatV2). Current temperature, humidity, heat and
+  cool setpoints (single setpoint when both use one topic), HVAC mode, power,
+  HVAC state and fan mode, each turned on by filling in its topic. Value maps
+  for modes and states, payload templates and a temperature multiplier for
+  devices such as TuyaMCU thermostats, and Celsius or Fahrenheit per device.
 
 ## v2026102511 - 2026-10-25
 

@@ -134,8 +134,8 @@ jobs:
           if not body:
               body = "See CHANGELOG.md."
           body += (
-              "\n\n### Install\n\nInstall `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z` "
-              "and `cp_mqtt_shutter.c4z` with Composer Pro (Driver → Add or Update Driver). "
+              "\n\n### Install\n\nInstall `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`, "
+              "`cp_mqtt_shutter.c4z` and `cp_mqtt_thermostat.c4z` with Composer Pro (Driver → Add or Update Driver). "
               "Projects with Automatic Updates on in the MQTT Broker driver update by themselves."
           )
           open(os.environ["RUNNER_TEMP"] + "/notes.md", "w", encoding="utf-8").write(body)

@@ -18,6 +18,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102600 - 2026-10-26
+
+### Added
+
+- MQTT Thermostat driver (`cp_mqtt_thermostat.c4z`): one MQTT thermostat as a
+  Control4 thermostat (thermostatV2). Current temperature, humidity, heat and
+  cool setpoints (single setpoint when both use one topic), HVAC mode, power,
+  HVAC state and fan mode, each turned on by filling in its topic. Value maps
+  for modes and states, payload templates and a temperature multiplier for
+  devices such as TuyaMCU thermostats, and Celsius or Fahrenheit per device.
+
 ## v2026102511 - 2026-10-25
 
 ### Added
