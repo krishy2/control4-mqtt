@@ -50,6 +50,7 @@ up immediately, no driver reload needed.
       - [Color](#color)
       - [White Channel](#white-channel)
       - [Transition](#transition)
+      - [Button Links](#button-links)
   - [Example: Tasmota](#example-tasmota)
   - [Example: Shelly](#example-shelly)
   - [Example: Zigbee2MQTT](#example-zigbee2mqtt)
@@ -379,6 +380,21 @@ brightness for ramps and keypad holds.
 `Tasmota Speed` sends Tasmota's `Speed` value (1-40 half-seconds). Enable fading
 on the device once with `Fade 1`.
 
+#### Button Links
+
+Colors for the LEDs of keypad buttons bound to the
+[On, Off and Toggle Button Links](#connections). Each link has two color
+pickers:
+
+- **On / Off / Toggle Button LED When Light On** - the LED color while the light
+  is on
+- **On / Off / Toggle Button LED When Light Off** - the LED color while the
+  light is off
+
+The defaults light the On and Toggle buttons blue while the light is on, and the
+Off button blue while it is off; black is unlit. A new color goes to the bound
+keypads at once.
+
 ## Example: Tasmota
 
 The quickest way is the [Discovered Device](#discovered-device) list. To set it
@@ -492,8 +508,12 @@ or color temperature mode.
 ## Connections
 
 - **MQTT Broker** - binds to the MQTT Broker driver automatically.
-- **Light** - the light_v2 proxy. Keypad buttons bind to the proxy's Top, Bottom
-  and Toggle button links as with any Control4 light.
+- **Light** - the light_v2 proxy.
+- **On Button Link**, **Off Button Link**, **Toggle Button Link** - bind a
+  keypad button here in the Connections tab. A tap turns the light on, off, or
+  toggles it; holding dims up (On), down (Off), or toward the other end
+  (Toggle), and releasing stops. The keypad LED follows the light in the colors
+  from [Button Links](#button-links).
 
 ### Programming
 

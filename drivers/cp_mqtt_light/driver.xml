@@ -548,6 +548,47 @@
         </items>
         <description>Unit of the transition value. Tasmota Speed: 1-40 half-seconds (enable Fade on the device).</description>
       </property>
+      <property>
+        <name>Button Links</name>
+        <type>LABEL</type>
+        <default>Button Links</default>
+      </property>
+      <property>
+        <name>On Button LED When Light On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the On Button Link while the light is on</description>
+      </property>
+      <property>
+        <name>On Button LED When Light Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the On Button Link while the light is off</description>
+      </property>
+      <property>
+        <name>Off Button LED When Light On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Off Button Link while the light is on</description>
+      </property>
+      <property>
+        <name>Off Button LED When Light Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Off Button Link while the light is off</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When Light On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the light is on</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When Light Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the light is off</description>
+      </property>
     </properties>
     <commands/>
   </config>
@@ -581,6 +622,54 @@
         <class>
           <classname>CP_MQTT_BROKER</classname>
           <autobind>True</autobind>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>200</id>
+      <facing>6</facing>
+      <connectionname>On Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>201</id>
+      <facing>6</facing>
+      <connectionname>Off Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>202</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
         </class>
       </classes>
       <hidden>False</hidden>

@@ -22,6 +22,7 @@ local MqttDevice = require("mqtt.entities.device")
 local MqttLight = require("mqtt.light")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
+local ButtonLinks = require("mqtt.button_links")
 
 -- Binding IDs
 local LIGHT_PROXY_BINDING = 5001
@@ -340,6 +341,77 @@ local function updateStateProperty()
 end
 
 -----------------------------------------------------------------------
+-- On, Off and Toggle button links (keypad buttons)
+-----------------------------------------------------------------------
+
+--- What each link last told its keypads, so a ramp does not repeat it.
+local ledSent = {}
+
+--- The LED colors set in Properties for a link ("rrggbb"), defaults when unset.
+local function linkColors(link)
+  local onName, offName = ButtonLinks.propertyNames(link)
+  local whenOn = ButtonLinks.color(Properties[onName])
+  local whenOff = ButtonLinks.color(Properties[offName])
+  if whenOn == nil and not IsEmpty(Properties[onName]) then
+    log:warn("%s: '%s' is not a color", onName, Properties[onName])
+  end
+  if whenOff == nil and not IsEmpty(Properties[offName]) then
+    log:warn("%s: '%s' is not a color", offName, Properties[offName])
+  end
+  return whenOn, whenOff
+end
+
+--- Tell the keypads on each link whether to light their LED, and in which color.
+--- @param force boolean|nil send even if nothing changed
+local function updateButtonLeds(force)
+  if light == nil then
+    return
+  end
+  local on = (light.level or 0) > 0
+  for _, link in ipairs(ButtonLinks.LINKS) do
+    local led = ButtonLinks.ledMessages(link, on, linkColors(link))
+    local c = led.colors
+    local key = table.concat({ led.state, c.ON_COLOR, c.OFF_COLOR, c.CURRENT_COLOR }, " ")
+    if force or ledSent[link.binding] ~= key then
+      ledSent[link.binding] = key
+      log:debug("%s Button Link: LED %s, color %s", link.name, led.lit and "lit" or "off", c.CURRENT_COLOR)
+      SendToProxy(link.binding, "BUTTON_COLORS", c, "COMMAND")
+      SendToProxy(link.binding, "MATCH_LED_STATE", { STATE = led.state }, "COMMAND")
+    end
+  end
+end
+
+for _, link in ipairs(ButtonLinks.LINKS) do
+  --- Commands from a keypad button bound to this link.
+  RFP[link.binding] = function(idBinding, strCommand, tParams, _args)
+    log:debug("%s Button Link: %s", link.name, strCommand)
+    local action = ButtonLinks.ACTIONS[strCommand]
+    if action ~= nil then
+      light:buttonAction(link.button, action, true)
+    elseif strCommand == "REQUEST_BUTTON_COLORS" or strCommand == "REQUEST_LED_STATE" then
+      updateButtonLeds(true)
+    else
+      log:debug("Unhandled command on the %s Button Link: %s", link.name, strCommand)
+    end
+  end
+  --- A keypad button was bound: show it the current state at once.
+  OBC[link.binding] = function(idBinding, strClass, bIsBound, otherDeviceId, otherBindingId)
+    log:trace("OBC[%s](%s, %s, %s, %s)", idBinding, strClass, bIsBound, otherDeviceId, otherBindingId)
+    if bIsBound then
+      updateButtonLeds(true)
+    end
+  end
+  local onName, offName = ButtonLinks.propertyNames(link)
+  for _, name in ipairs({ onName, offName }) do
+    OPC[(name:gsub("%W", "_"))] = function()
+      if gInitialized then
+        updateButtonLeds(true)
+      end
+    end
+  end
+end
+
+-----------------------------------------------------------------------
 -- Driver lifecycle
 -----------------------------------------------------------------------
 
@@ -369,7 +441,10 @@ function OnDriverInit()
   light = MqttLight.new({
     proxyBinding = LIGHT_PROXY_BINDING,
     brokerBinding = MQTT_BINDING,
-    onStateChanged = updateStateProperty,
+    onStateChanged = function()
+      updateStateProperty()
+      updateButtonLeds()
+    end,
     onSettingsChanged = function(settings)
       persist:set(SETTINGS_PERSIST_KEY, settings)
     end,
@@ -404,6 +479,7 @@ function OnDriverLateInit()
   applyConfig(true)
   updateStateProperty()
   updateOnline(true)
+  updateButtonLeds(true)
 
   tasmotaSelection = persist:get(TASMOTA_PERSIST_KEY, nil)
   updateTasmotaList()

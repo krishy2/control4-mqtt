@@ -18,6 +18,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102506 - 2026-10-25
+
+### Added
+
+- MQTT Light: On, Off and Toggle Button Links in the Connections tab, for keypad
+  buttons. A tap turns the light on, off or toggles it; holding dims and
+  releasing stops. The keypad LED follows the light, in colors chosen with six
+  color pickers in Properties (each link's color while the light is on and while
+  it is off).
+
+### Fixed
+
+- MQTT Light: releasing a hold-to-dim right after it started on a light that was
+  off could turn the light off instead of leaving it at the lowest level.
+
 ## v2026102505 - 2026-10-25
 
 ### Added

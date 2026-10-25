@@ -1520,6 +1520,10 @@ function MqttLight:stopRamp()
     return
   end
   local lvl = round(self:_rampLevel())
+  -- A fade toward on that is stopped at once must not stop at 0 (off).
+  if r.target > 0 and lvl < 1 then
+    lvl = 1
+  end
   self:_cancelRampTimers()
   self.ramp = nil
   if r.native then
@@ -1623,13 +1627,18 @@ function MqttLight:_startHold(buttonId)
 end
 
 --- Handle BUTTON_ACTION from the proxy (keypad bindings).
-function MqttLight:buttonAction(buttonId, action)
+--- @param buttonId number 0 top, 1 bottom, 2 toggle
+--- @param action number 0 release after hold, 1 press, 2 release after click
+--- @param fromLink? boolean from one of the driver's own button links: not echoed to the proxy
+function MqttLight:buttonAction(buttonId, action, fromLink)
   buttonId, action = tonumber(buttonId), tonumber(action)
   if buttonId == nil or action == nil then
     return
   end
-  -- Echo so the proxy knows we track the button state
-  self:_notify("BUTTON_ACTION", { BUTTON_ID = buttonId, ACTION = action })
+  if not fromLink then
+    -- Echo so the proxy knows we track the button state
+    self:_notify("BUTTON_ACTION", { BUTTON_ID = buttonId, ACTION = action })
+  end
 
   if action == ACTION_PRESS then
     self.press = { id = buttonId, holding = false }
