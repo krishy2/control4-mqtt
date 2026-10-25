@@ -312,6 +312,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102502 - 2026-10-25
+
+### Fixed
+
+- Fixed Composer Pro refusing the MQTT Light's Default Brightness Rate ("Value
+  of '0.750' is not valid"). The light declared a 3600 s maximum brightness and
+  color fade time, which Composer reads as a 16-bit number and so as negative.
+  The maximum is now 32.7 s; keypad click and hold rates are not affected.
+
 ## v2026102501 - 2026-10-25
 
 ### Fixed

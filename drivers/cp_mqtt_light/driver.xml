@@ -31,9 +31,9 @@
     <hold_rate_min>500</hold_rate_min>
     <hold_rate_max>3600000</hold_rate_max>
     <brightness_rate_min>0</brightness_rate_min>
-    <brightness_rate_max>3600000</brightness_rate_max>
+    <brightness_rate_max>32767</brightness_rate_max>
     <color_rate_min>0</color_rate_min>
-    <color_rate_max>3600000</color_rate_max>
+    <color_rate_max>32767</color_rate_max>
     <supports_brightness_stop>true</supports_brightness_stop>
     <supports_color>false</supports_color>
     <supports_color_correlated_temperature>false</supports_color_correlated_temperature>

@@ -430,6 +430,12 @@ T.check(
   "driver.xml is not a combo driver (combo drivers get no proxy or Navigator UI)",
   not xml:find("<combo>", 1, true)
 )
+-- Composer reads the brightness and color rate limits as 16-bit numbers: a larger
+-- maximum wraps negative and even its 0.75 s default is refused as out of range.
+for _, cap in ipairs({ "brightness_rate_min", "brightness_rate_max", "color_rate_min", "color_rate_max" }) do
+  local value = tonumber(xml:match("<" .. cap .. ">(%-?%d+)</" .. cap .. ">"))
+  T.check(cap .. " fits a 16-bit signed number", value ~= nil and value >= 0 and value <= 32767, tostring(value))
+end
 for block in xml:gmatch("<property>(.-)</property>") do
   local name = block:match("<name>(.-)</name>")
   local default = block:match("<default>(.-)</default>") or ""
