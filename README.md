@@ -23,18 +23,21 @@ is added first.
 
 ## Driver Suite
 
-The MQTT driver suite consists of three drivers:
+The MQTT driver suite consists of four drivers:
 
 | Driver           | Direction     | Purpose                                                                                         |
 | ---------------- | ------------- | ----------------------------------------------------------------------------------------------- |
 | **MQTT Broker**  | N/A           | The MQTT connection: an external broker, or the built-in one                                    |
 | **MQTT General** | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
 | **MQTT Light**   | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)            |
+| **MQTT Shutter** | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)         |
 
 **Typical Setup:**
 
 1. Add the **MQTT Broker** driver and choose its mode
 1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
+1. Add one **MQTT Shutter** per shutter or blind (Tasmota, Shelly, Zigbee2MQTT,
+   ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
 
@@ -85,8 +88,8 @@ The MQTT driver suite consists of three drivers:
    [GitHub](https://github.com/krishy2/control4-mqtt/releases/latest).
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
-   the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z` and `cp_mqtt_light.c4z`
-   drivers.
+   the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z` and
+   `cp_mqtt_shutter.c4z` drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
@@ -377,6 +380,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026102511 - 2026-10-25
+
+### Added
+
+- MQTT Shutter driver (`cp_mqtt_shutter.c4z`): one MQTT shutter or blind as a
+  Control4 blind, using the same blind proxy protocol as Control4's 2 Relay
+  Blinds driver. Position (0-100), open, close and stop; slats with a second
+  driver set to Control: Tilt. Separate topics, JSON (Zigbee2MQTT) or Shelly
+  Gen2+ RPC. A Discovered Device list with the Tasmota shutters and Shelly
+  covers the MQTT Broker driver found; picking one fills in every setting and
+  names the driver. Open, Close and Toggle Button Links for keypads (tap to
+  move, tap again to stop, hold to move while held) with LED color pickers.
+- MQTT Broker: discovery also records Tasmota shutters (shutter relays, tilt)
+  and Shelly covers (slat control); the broker updates the shutter driver too.
 
 ## v2026102510 - 2026-10-25
 

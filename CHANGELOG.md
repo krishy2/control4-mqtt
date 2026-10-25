@@ -18,6 +18,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102511 - 2026-10-25
+
+### Added
+
+- MQTT Shutter driver (`cp_mqtt_shutter.c4z`): one MQTT shutter or blind as a
+  Control4 blind, using the same blind proxy protocol as Control4's 2 Relay
+  Blinds driver. Position (0-100), open, close and stop; slats with a second
+  driver set to Control: Tilt. Separate topics, JSON (Zigbee2MQTT) or Shelly
+  Gen2+ RPC. A Discovered Device list with the Tasmota shutters and Shelly
+  covers the MQTT Broker driver found; picking one fills in every setting and
+  names the driver. Open, Close and Toggle Button Links for keypads (tap to
+  move, tap again to stop, hold to move while held) with LED color pickers.
+- MQTT Broker: discovery also records Tasmota shutters (shutter relays, tilt)
+  and Shelly covers (slat control); the broker updates the shutter driver too.
+
 ## v2026102510 - 2026-10-25
 
 ### Fixed

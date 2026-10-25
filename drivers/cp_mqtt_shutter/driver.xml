@@ -1,0 +1,533 @@
+<devicedata>
+  <name>MQTT Shutter</name>
+  <version/>
+  <manufacturer>Control Pro</manufacturer>
+  <model>MQTT Shutter</model>
+  <creator>Chris Toth</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
+  <created>10/25/2026 11:45:00 PM</created>
+  <modified/>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" name="MQTT Shutter">blind</proxy>
+  </proxies>
+  <composer_categories>
+    <category>Motorization</category>
+  </composer_categories>
+  <conditionals/>
+  <events/>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <!-- Global Availability Settings -->
+      <property>
+        <name>Availability Settings</name>
+        <type>LABEL</type>
+        <default>Availability Settings</default>
+      </property>
+      <property>
+        <name>Availability Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to subscribe for device availability (optional)</description>
+      </property>
+      <property>
+        <name>Availability Topic Value</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Raw value received from the availability topic</description>
+      </property>
+      <property>
+        <name>Availability Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to extract availability value (e.g., "$.status"). Leave empty to use raw payload.</description>
+      </property>
+      <property>
+        <name>Availability Value Path Result</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Result of JSONPath extraction for availability</description>
+      </property>
+      <property>
+        <name>Availability Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current availability status</description>
+      </property>
+      <property>
+        <name>Payload Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is available (if only this is set, other values mean unavailable)</description>
+      </property>
+      <property>
+        <name>Payload Not Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is not available (if only this is set, other values mean available)</description>
+      </property>
+      <property>
+        <name>Shutter Settings</name>
+        <type>LABEL</type>
+        <default>Shutter Settings</default>
+      </property>
+      <property>
+        <name>Discovered Device</name>
+        <type>DYNAMIC_LIST</type>
+        <description>Pick a Tasmota shutter or Shelly cover found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+      </property>
+      <property>
+        <name>Device Notes</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Settings on the discovered device that should change for this shutter to work well</description>
+      </property>
+      <property>
+        <name>Control</name>
+        <type>LIST</type>
+        <default>Position</default>
+        <items>
+          <item>Position</item>
+          <item>Tilt</item>
+        </items>
+        <description>Position: open, close and move the shutter. Tilt: the slats of a venetian blind (add a second MQTT Shutter driver for them).</description>
+      </property>
+      <property>
+        <name>Capabilities</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>What the shutter can do with the current settings</description>
+      </property>
+      <property>
+        <name>Shutter State</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>State as reported to Control4</description>
+      </property>
+      <property>
+        <name>Payload Mode</name>
+        <type>LIST</type>
+        <default>Separate Topics</default>
+        <items>
+          <item>Separate Topics</item>
+          <item>JSON</item>
+          <item>Shelly (Gen2+)</item>
+        </items>
+        <description>Separate Topics: state and command topics per ability with plain values (Tasmota, Home Assistant MQTT cover). JSON: one state and one command topic carrying a JSON object (Zigbee2MQTT). Shelly (Gen2+): a cover output of a Shelly Plus, Pro, Gen3 or Gen4 controlled over Shelly RPC.</description>
+      </property>
+      <property>
+        <name>Shelly Topic Prefix</name>
+        <type>STRING</type>
+        <default/>
+        <description>The Shelly's MQTT topic prefix (by default its device ID, e.g. shellyplus2pm-a8032ab12345)</description>
+      </property>
+      <property>
+        <name>Shelly Component</name>
+        <type>STRING</type>
+        <default/>
+        <description>The cover: cover:0 (or cover:1 on devices with two)</description>
+      </property>
+      <property>
+        <name>JSON State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic the shutter publishes its JSON state on (e.g. zigbee2mqtt/Living Blind)</description>
+      </property>
+      <property>
+        <name>JSON Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish JSON commands to (e.g. zigbee2mqtt/Living Blind/set)</description>
+      </property>
+      <property>
+        <name>Position Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the position, 0-100 (e.g. position)</description>
+      </property>
+      <property>
+        <name>Tilt Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the slat position (e.g. tilt)</description>
+      </property>
+      <property>
+        <name>State Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for open/close/stop commands and states (e.g. state)</description>
+      </property>
+      <property>
+        <name>Moving Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key reporting movement: UP/DOWN/STOP or opening/closing/stopped (e.g. moving)</description>
+      </property>
+      <property>
+        <name>State Request Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional: topic that makes the device report its state (Tasmota: cmnd/&lt;topic&gt;/ShutterPosition1 with an empty payload)</description>
+      </property>
+      <property>
+        <name>State Request Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload for the State Request Topic</description>
+      </property>
+      <property>
+        <name>Optimistic</name>
+        <type>LIST</type>
+        <default>Auto</default>
+        <items>
+          <item>Auto</item>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Assume a command worked (Auto: yes when no state topic is set)</description>
+      </property>
+      <property>
+        <name>QoS</name>
+        <type>LIST</type>
+        <default>0</default>
+        <items>
+          <item>0</item>
+          <item>1</item>
+          <item>2</item>
+        </items>
+        <description>MQTT Quality of Service for commands</description>
+      </property>
+      <property>
+        <name>Retain</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Retain command messages on the broker</description>
+      </property>
+      <property>
+        <name>Travel Time (Seconds)</name>
+        <type>RANGED_INTEGER</type>
+        <default>20</default>
+        <minimum>1</minimum>
+        <maximum>300</maximum>
+        <description>How long a full open or close takes; used for Navigator progress and when the device does not report its position</description>
+      </property>
+      <property>
+        <name>Tilt Time (Seconds)</name>
+        <type>RANGED_INTEGER</type>
+        <default>2</default>
+        <minimum>1</minimum>
+        <maximum>60</maximum>
+        <description>How long the slats take from closed to open</description>
+      </property>
+      <property>
+        <name>Invert Position</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>No</item>
+          <item>Yes</item>
+        </items>
+        <description>Yes when the device reports 0 as open and 100 as closed</description>
+      </property>
+      <property>
+        <name>Position</name>
+        <type>LABEL</type>
+        <default>Position</default>
+      </property>
+      <property>
+        <name>Position State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the position (Tasmota: stat/&lt;topic&gt;/RESULT)</description>
+      </property>
+      <property>
+        <name>Position Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the position, 0-100 (Tasmota: $.Shutter1.Position)</description>
+      </property>
+      <property>
+        <name>Position Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to send a position (0-100) to. Filling it in lets Control4 move the shutter to any level (Tasmota: cmnd/&lt;topic&gt;/ShutterPosition1)</description>
+      </property>
+      <property>
+        <name>Target Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional: JSONPath on the position state topic to the position being moved to (Tasmota: $.Shutter1.Target)</description>
+      </property>
+      <property>
+        <name>Movement State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional: topic reporting whether the shutter is moving (Tasmota: stat/&lt;topic&gt;/RESULT)</description>
+      </property>
+      <property>
+        <name>Movement Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the movement: 1/-1/0, opening/closing/stopped or UP/DOWN/STOP (Tasmota: $.Shutter1.Direction)</description>
+      </property>
+      <property>
+        <name>Commands</name>
+        <type>LABEL</type>
+        <default>Commands</default>
+      </property>
+      <property>
+        <name>Open Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to open the shutter (Tasmota: cmnd/&lt;topic&gt;/ShutterOpen1)</description>
+      </property>
+      <property>
+        <name>Open Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload for Open (JSON mode: the State Key value, default OPEN)</description>
+      </property>
+      <property>
+        <name>Close Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to close the shutter (Tasmota: cmnd/&lt;topic&gt;/ShutterClose1)</description>
+      </property>
+      <property>
+        <name>Close Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload for Close (JSON mode: default CLOSE)</description>
+      </property>
+      <property>
+        <name>Stop Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to stop the shutter (Tasmota: cmnd/&lt;topic&gt;/ShutterStop1). Filling it in adds Stop.</description>
+      </property>
+      <property>
+        <name>Stop Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload for Stop (JSON mode: default STOP)</description>
+      </property>
+      <property>
+        <name>Tilt</name>
+        <type>LABEL</type>
+        <default>Tilt</default>
+      </property>
+      <property>
+        <name>Tilt State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the slat position (Tasmota: stat/&lt;topic&gt;/RESULT)</description>
+      </property>
+      <property>
+        <name>Tilt Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the slat position (Tasmota: $.Shutter1.Tilt)</description>
+      </property>
+      <property>
+        <name>Tilt Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to send a slat position to (Tasmota: cmnd/&lt;topic&gt;/ShutterTilt1)</description>
+      </property>
+      <property>
+        <name>Tilt Min</name>
+        <type>STRING</type>
+        <default>0</default>
+        <description>Device value for slats closed, shown as 0% (Tasmota: -90)</description>
+      </property>
+      <property>
+        <name>Tilt Max</name>
+        <type>STRING</type>
+        <default>100</default>
+        <description>Device value for slats open, shown as 100% (Tasmota: 90)</description>
+      </property>
+      <property>
+        <name>Button Links</name>
+        <type>LABEL</type>
+        <default>Button Links</default>
+      </property>
+      <property>
+        <name>Open Button LED When Open</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Open Button Link while the shutter is open (or partly open)</description>
+      </property>
+      <property>
+        <name>Open Button LED When Closed</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Open Button Link while the shutter is closed</description>
+      </property>
+      <property>
+        <name>Close Button LED When Open</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Close Button Link while the shutter is open (or partly open)</description>
+      </property>
+      <property>
+        <name>Close Button LED When Closed</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Close Button Link while the shutter is closed</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When Open</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the shutter is open (or partly open)</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When Closed</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the shutter is closed</description>
+      </property>
+    </properties>
+    <actions>
+      <action>
+        <name>Request State</name>
+        <command>RequestState</command>
+      </action>
+    </actions>
+  </config>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Blind</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BLIND</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>5002</id>
+      <facing>6</facing>
+      <connectionname>MQTT Broker</connectionname>
+      <type>2</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>CP_MQTT_BROKER</classname>
+          <autobind>True</autobind>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>300</id>
+      <facing>6</facing>
+      <connectionname>Open Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>301</id>
+      <facing>6</facing>
+      <connectionname>Close Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>302</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

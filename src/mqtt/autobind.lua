@@ -21,6 +21,7 @@ AutoBind.BROKER_BINDING = 5001
 AutoBind.CONSUMERS = {
   ["cp_mqtt_general.c4z"] = 5001,
   ["cp_mqtt_light.c4z"] = 5002,
+  ["cp_mqtt_shutter.c4z"] = 5002,
 }
 
 --- Device IDs running a driver file, lowest first.

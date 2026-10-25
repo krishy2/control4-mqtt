@@ -123,6 +123,16 @@ function Tasmota.parse(payload)
       switches[#switches + 1] = { index = i, name = swn }
     end
   end
+  -- Shutters: their tilt settings (sht) and options (sho), one entry per shutter
+  local sht, sho = {}, {}
+  for i, v in ipairs(type(t.sht) == "table" and t.sht or {}) do
+    if type(v) == "table" then
+      sht[i] = { num(v[1]) or 0, num(v[2]) or 0, num(v[3]) or 0 }
+    end
+  end
+  for i, v in ipairs(type(t.sho) == "table" and t.sho or {}) do
+    sho[i] = num(v) or 0
+  end
   local tp = type(t.tp) == "table" and t.tp or {}
   local state = type(t.state) == "table" and t.state or {}
 
@@ -152,6 +162,8 @@ function Tasmota.parse(payload)
     so114 = opt(114),
     buttons = buttons,
     switches = switches,
+    shutterTilt = sht,
+    shutterOptions = sho,
   }
 end
 
@@ -343,7 +355,101 @@ function Tasmota.summary(dev)
     ip = dev.ip,
     loads = loads,
     buttons = #Tasmota.buttons(dev),
+    shutters = Tasmota.shutters(dev),
   }
+end
+
+local RL_SHUTTER = 3
+
+--- Shutters on the device: two relays marked as shutter (rl 3) each.
+--- @param dev table
+--- @return table[] { id, index, label, tilt, tiltMin, tiltMax, inverted }
+function Tasmota.shutters(dev)
+  local relays = 0
+  for _, v in ipairs(dev.relays or {}) do
+    if v == RL_SHUTTER then
+      relays = relays + 1
+    end
+  end
+  local out = {}
+  local count = math.floor(relays / 2)
+  for i = 1, count do
+    local tilt = (dev.shutterTilt or {})[i] or { 0, 0, 0 }
+    local hasTilt = tilt[1] ~= tilt[2]
+    out[#out + 1] = {
+      id = "shutter" .. i,
+      index = i,
+      label = count > 1 and ("Shutter " .. i) or "Shutter",
+      tilt = hasTilt,
+      tiltMin = hasTilt and tilt[1] or -90,
+      tiltMax = hasTilt and tilt[2] or 90,
+      inverted = (((dev.shutterOptions or {})[i] or 0) % 2) == 1,
+    }
+  end
+  return out
+end
+
+--- MQTT Shutter property values for one shutter.
+--- @param dev table
+--- @param id string "shutter<n>"
+--- @return table|nil props, string|nil err
+function Tasmota.shutterProperties(dev, id)
+  local sh
+  for _, s in ipairs(Tasmota.shutters(dev)) do
+    if s.id == id then
+      sh = s
+    end
+  end
+  if sh == nil then
+    return nil, "no such shutter on " .. tostring(dev.topic)
+  end
+  local n = tostring(sh.index)
+  local result = Tasmota.topicFor(dev, 2, "RESULT")
+  local function cmnd(c)
+    return Tasmota.topicFor(dev, 1, c .. n)
+  end
+  local key = "$.Shutter" .. n
+  return {
+    ["Payload Mode"] = "Separate Topics",
+    ["Position State Topic"] = result,
+    ["Position Value Path"] = key .. ".Position",
+    ["Position Command Topic"] = cmnd("ShutterPosition"),
+    ["Target Value Path"] = key .. ".Target",
+    ["Movement State Topic"] = result,
+    ["Movement Value Path"] = key .. ".Direction",
+    ["Open Command Topic"] = cmnd("ShutterOpen"),
+    ["Open Payload"] = "",
+    ["Close Command Topic"] = cmnd("ShutterClose"),
+    ["Close Payload"] = "",
+    ["Stop Command Topic"] = cmnd("ShutterStop"),
+    ["Stop Payload"] = "",
+    ["Tilt State Topic"] = sh.tilt and result or "",
+    ["Tilt Value Path"] = sh.tilt and (key .. ".Tilt") or "",
+    ["Tilt Command Topic"] = sh.tilt and cmnd("ShutterTilt") or "",
+    ["Tilt Min"] = tostring(sh.tiltMin),
+    ["Tilt Max"] = tostring(sh.tiltMax),
+    ["Invert Position"] = sh.inverted and "Yes" or "No",
+    ["State Request Topic"] = cmnd("ShutterPosition"),
+    ["State Request Payload"] = "",
+    ["Availability Topic"] = Tasmota.topicFor(dev, 3, "LWT"),
+    ["Availability Value Path"] = "",
+    ["Payload Available"] = dev.online,
+    ["Payload Not Available"] = dev.offline,
+  }
+end
+
+--- A Control4 name for a shutter: the device name (with the shutter when it has several).
+function Tasmota.shutterName(dev, id)
+  for _, s in ipairs(Tasmota.shutters(dev)) do
+    if s.id == id then
+      local base = dev.name
+      if base == nil or base == "" or base:match("^Tasmota%d*$") then
+        base = dev.topic
+      end
+      return s.label == "Shutter" and base or (base .. " " .. s.label)
+    end
+  end
+  return nil
 end
 
 --- Tasmota button actions (SetOption73 1).

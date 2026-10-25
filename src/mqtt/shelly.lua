@@ -34,7 +34,7 @@ Shelly.TYPES = { "light", "cct", "rgb", "rgbw", "switch" }
 local TYPE_ORDER = { light = 1, cct = 2, rgb = 3, rgbw = 4, switch = 5 }
 
 --- RPC method prefix per type.
-Shelly.METHODS = { light = "Light", cct = "CCT", rgb = "RGB", rgbw = "RGBW", switch = "Switch" }
+Shelly.METHODS = { light = "Light", cct = "CCT", rgb = "RGB", rgbw = "RGBW", switch = "Switch", cover = "Cover" }
 
 local TYPE_LABELS = { light = "Dimmer", cct = "CCT light", rgb = "RGB light", rgbw = "RGBW light", switch = "Relay" }
 
@@ -148,6 +148,18 @@ function Shelly.build(info, prefix, config)
     end
     return a.index < b.index
   end)
+  -- Covers (cover profile): MQTT Shutter outputs, slats when slat control is on
+  local covers = {}
+  for key, cfg in pairs(type(config) == "table" and config or {}) do
+    local index = tostring(key):match("^cover:(%d+)$")
+    if index and type(cfg) == "table" then
+      local slat = type(cfg.slat) == "table" and cfg.slat.enable == true
+      covers[#covers + 1] = { key = key, index = tonumber(index), name = text(cfg.name), slat = slat }
+    end
+  end
+  table.sort(covers, function(a, b)
+    return a.index < b.index
+  end)
   -- Inputs: button-type ones become MQTT General events
   local inputs = {}
   for key, cfg in pairs(type(config) == "table" and config or {}) do
@@ -175,6 +187,7 @@ function Shelly.build(info, prefix, config)
     ip = "",
     components = components,
     inputs = inputs,
+    covers = covers,
   }
 end
 
@@ -224,7 +237,57 @@ function Shelly.summary(dev)
     ip = dev.ip,
     loads = loads,
     buttons = #Shelly.buttons(dev),
+    shutters = Shelly.shutters(dev),
   }
+end
+
+--- Covers on the device, in the same shape as Tasmota.shutters.
+function Shelly.shutters(dev)
+  local out = {}
+  local covers = dev.covers or {}
+  for _, c in ipairs(covers) do
+    local label = #covers > 1 and string.format("Cover %d", c.index + 1) or "Cover"
+    if c.name and c.name ~= dev.name then
+      label = c.name
+    end
+    out[#out + 1] = { id = c.key, index = c.index, label = label, tilt = c.slat, name = c.name }
+  end
+  return out
+end
+
+--- MQTT Shutter property values for one cover.
+function Shelly.shutterProperties(dev, key)
+  for _, c in ipairs(dev.covers or {}) do
+    if c.key == key then
+      return {
+        ["Payload Mode"] = "Shelly (Gen2+)",
+        ["Shelly Topic Prefix"] = dev.topic,
+        ["Shelly Component"] = c.key,
+        ["State Request Topic"] = dev.topic .. "/rpc",
+        ["State Request Payload"] = Shelly.statusRequest(dev.topic, c.key),
+        ["Availability Topic"] = dev.topic .. "/online",
+        ["Availability Value Path"] = "",
+        ["Payload Available"] = "true",
+        ["Payload Not Available"] = "false",
+      }
+    end
+  end
+  return nil, "no such cover on " .. tostring(dev.topic)
+end
+
+--- A Control4 name for a cover: its own name, else the device name (with the
+--- cover when the device has several), else the device ID.
+function Shelly.shutterName(dev, key)
+  for _, s in ipairs(Shelly.shutters(dev)) do
+    if s.id == key then
+      if s.name and s.name ~= "" then
+        return s.name
+      end
+      local base = (dev.name and dev.name ~= dev.id) and dev.name or dev.id or dev.topic
+      return #(dev.covers or {}) > 1 and (base .. " " .. s.label) or base
+    end
+  end
+  return nil
 end
 
 --- Shelly button events, without btn_down/btn_up (sent with every press).

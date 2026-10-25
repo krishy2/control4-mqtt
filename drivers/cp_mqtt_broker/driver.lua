@@ -13,6 +13,7 @@ DRIVER_FILENAMES = {
   "cp_mqtt_broker.c4z",
   "cp_mqtt_general.c4z",
   "cp_mqtt_light.c4z",
+  "cp_mqtt_shutter.c4z",
 }
 
 require("lib.utils")
@@ -1030,7 +1031,7 @@ function RFP.GET_TASMOTA_DEVICES(idBinding, strCommand, tParams, args)
     list[#list + 1] = Tasmota.summary(dev)
   end
   for _, dev in pairs(shellyDevices) do
-    if #(dev.components or {}) > 0 or #(dev.inputs or {}) > 0 then
+    if #(dev.components or {}) > 0 or #(dev.inputs or {}) > 0 or #(dev.covers or {}) > 0 then
       list[#list + 1] = Shelly.summary(dev)
     end
   end
