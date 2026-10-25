@@ -313,17 +313,37 @@ class Device(Client):
         self.seq = 0
         self.on_publish = self.handle
 
+    def discovery_topic(self):
+        index = int(self.id.rsplit("_", 1)[1])
+        return f"tasmota/discovery/SIM0000{index:05X}/config"
+
     def discovery_config(self):
         # Shaped like Tasmota's discovery config, padded to ~1.5 KB
+        index = int(self.id.rsplit("_", 1)[1])
         cfg = {
-            "ip": "10.0.0.1",
+            "ip": f"10.0.{index // 250}.{index % 250 + 1}",
             "dn": self.id,
-            "fn": [self.id],
-            "hn": self.id,
+            "fn": [self.id, None, None, None, None, None, None, None],
+            "hn": f"{self.id}-{index:04d}",
+            "mac": f"SIM0000{index:05X}",
+            "md": "Simulated RGBW",
+            "ty": 0,
+            "if": 0,
+            "cam": 0,
+            "ofln": "Offline",
+            "onln": "Online",
+            "state": ["OFF", "ON", "TOGGLE", "HOLD"],
+            "sw": "14.3.0",
             "t": self.id,
+            "ft": "%prefix%/%topic%/",
+            "tp": ["cmnd", "stat", "tele"],
+            "rl": [2, 0, 0, 0, 0, 0, 0, 0],
+            "so": {"4": 0, "11": 0, "13": 0, "17": 0, "20": 0, "30": 0},
+            "lk": 1,
             "lt_st": 4,
+            "ver": 1,
         }
-        cfg["pad"] = "x" * 1400
+        cfg["pad"] = "x" * 900
         return json.dumps(cfg)
 
     async def start(self):
@@ -332,7 +352,7 @@ class Device(Client):
             subscribe=[f"cmnd/{self.id}/#"],
             first_publishes=[
                 (f"tele/{self.id}/LWT", "Online", True),
-                (f"tasmota/discovery/{self.id}/config", self.discovery_config(), True),
+                (self.discovery_topic(), self.discovery_config(), True),
             ],
         )
 
@@ -564,9 +584,9 @@ async def run(args):
         configs = sum(
             1
             for d in live
-            if checker.retained_seen.get(
-                f"tasmota/discovery/{d.id}/config", b""
-            ).decode(errors="replace")
+            if checker.retained_seen.get(d.discovery_topic(), b"").decode(
+                errors="replace"
+            )
             == d.discovery_config()
         )
         report.check(
@@ -575,7 +595,7 @@ async def run(args):
             f"{online}/{len(live)}",
         )
         report.check(
-            "retained: every discovery config intact (1.5 KB)",
+            "retained: every discovery config intact",
             configs == len(live),
             f"{configs}/{len(live)}",
         )

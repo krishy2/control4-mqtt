@@ -21,7 +21,9 @@ require("drivers-common-public.global.lib")
 require("drivers-common-public.global.timer")
 
 local log = require("lib.logging")
+local persist = require("lib.persist")
 local githubUpdater = require("lib.github-updater")
+local Tasmota = require("mqtt.tasmota")
 local Broker = require("mqtt.server.broker")
 local C4Server = require("mqtt.server.c4_server")
 
@@ -44,6 +46,10 @@ local builtin = { broker = nil, server = nil }
 
 -- Binding ID for the MQTT_BROKER connection
 local MQTT_BROKER_BINDING = 5001
+
+-- Tasmota devices seen through discovery: MAC -> device (see mqtt.tasmota)
+local TASMOTA_PERSIST_KEY = "TasmotaDevices"
+local tasmotaDevices = {}
 
 local EXTERNAL_PROPERTIES = { "Broker Settings", "Broker Address", "Port", "Username", "Password", "Keep Alive" }
 local BUILTIN_PROPERTIES = {
@@ -147,6 +153,83 @@ local function routeMessageToSubscribers(topic, payload, qos, retain)
 end
 
 -----------------------------------------------------------------------
+-- Tasmota discovery
+-----------------------------------------------------------------------
+
+local function sameValue(a, b)
+  if type(a) ~= type(b) then
+    return false
+  end
+  if type(a) ~= "table" then
+    return a == b
+  end
+  for k, v in pairs(a) do
+    if not sameValue(v, b[k]) then
+      return false
+    end
+  end
+  for k in pairs(b) do
+    if a[k] == nil then
+      return false
+    end
+  end
+  return true
+end
+
+local function tasmotaCount()
+  local n = 0
+  for _ in pairs(tasmotaDevices) do
+    n = n + 1
+  end
+  return n
+end
+
+local function updateTasmotaProperty()
+  UpdateProperty("Tasmota Devices", tostring(tasmotaCount()))
+end
+
+--- A device's discovery message arrived (an empty payload removes it).
+--- @param mac string
+--- @param payload string
+local function onTasmotaDiscovery(mac, payload)
+  local dev = Tasmota.parse(payload)
+  local old = tasmotaDevices[mac]
+  if dev == nil then
+    if old == nil then
+      return
+    end
+    log:info("Tasmota device %s (%s) removed itself from discovery", old.name, old.topic)
+    tasmotaDevices[mac] = nil
+  else
+    if sameValue(old, dev) then
+      return
+    end
+    log:info("Tasmota device %s (%s, %s) %s", dev.name, dev.topic, dev.ip, old and "changed" or "discovered")
+    tasmotaDevices[mac] = dev
+  end
+  -- Many devices announce themselves at once after a restart: save at most every 10s.
+  persist:defer(function()
+    persist:set(TASMOTA_PERSIST_KEY, tasmotaDevices)
+  end)
+  updateTasmotaProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", { mac = mac })
+end
+
+--- Handle a message if it is a Tasmota discovery config.
+--- @return boolean handled
+local function handleDiscovery(topic, payload)
+  local mac = Tasmota.discoveryMac(topic)
+  if mac == nil then
+    return false
+  end
+  local ok, err = pcall(onTasmotaDiscovery, mac, payload)
+  if not ok then
+    log:error("Tasmota discovery from %s failed: %s", topic, err)
+  end
+  return true
+end
+
+-----------------------------------------------------------------------
 -- Built-in mode
 -----------------------------------------------------------------------
 
@@ -185,6 +268,7 @@ local function ensureBuiltIn()
     log = log,
     onPublish = function(topic, payload, _retain, clientId)
       log:trace("Built-in broker: %s -> %s", tostring(clientId or "driver"), topic)
+      handleDiscovery(topic, payload)
       local devices = subscriptions[topic]
       if IsEmpty(devices) then
         return
@@ -299,6 +383,8 @@ local function connectExternal()
           MQTT:Subscribe(topic)
         end
       end
+      -- Tasmota discovery (retained, so the broker sends what it has)
+      MQTT:Subscribe(Tasmota.DISCOVERY_FILTER)
 
       -- Notify child drivers
       setConnected(true)
@@ -343,6 +429,9 @@ local function connectExternal()
 
   MQTT:OnMessage(function(obj, msgId, topic, payload, qos, retain)
     log:debug("MQTT:OnMessage msgId=%s topic=%s payload=%s qos=%s retain=%s", msgId, topic, payload, qos, retain)
+    if handleDiscovery(topic, payload) and IsEmpty(subscriptions[topic]) then
+      return
+    end
     -- Cache the last message for new subscribers
     lastMessages[topic] = {
       payload = payload,
@@ -418,6 +507,8 @@ function OnDriverInit()
   log:setLogLevel(Properties["Log Level"])
   log:setLogMode(Properties["Log Mode"])
   log:trace("OnDriverInit()")
+  persist:setWriteBehind(TASMOTA_PERSIST_KEY, 10 * ONE_SECOND)
+  tasmotaDevices = persist:get(TASMOTA_PERSIST_KEY, {}) or {}
 end
 
 function OnDriverLateInit()
@@ -446,10 +537,12 @@ function OnDriverLateInit()
 
   gInitialized = true
   updateModeVisibility()
+  updateTasmotaProperty()
   Connect()
 end
 
 function OnDriverDestroyed()
+  persist:flush()
   stopBuiltIn("driver removed")
   stopExternal()
 end
@@ -728,9 +821,76 @@ OBC[MQTT_BROKER_BINDING] = function(idBinding, strClass, bIsBound, otherDeviceId
   end
 end
 
+-- Tasmota devices for child drivers: the list, then one device on request
+function RFP.GET_TASMOTA_DEVICES(idBinding, strCommand, tParams, args)
+  log:trace("RFP.GET_TASMOTA_DEVICES(%s, %s, %s, %s)", idBinding, strCommand, tParams, args)
+  local deviceId = tonumber(Select(tParams, "device_id"))
+  if not deviceId then
+    log:warn("GET_TASMOTA_DEVICES called without device_id")
+    return
+  end
+  local list = {}
+  for _, dev in pairs(tasmotaDevices) do
+    list[#list + 1] = Tasmota.summary(dev)
+  end
+  table.sort(list, function(a, b)
+    return a.name:lower() .. a.topic < b.name:lower() .. b.topic
+  end)
+  SendToDevice(deviceId, "TASMOTA_DEVICES", { devices = JSON:encode(list) })
+end
+
+function RFP.GET_TASMOTA_DEVICE(idBinding, strCommand, tParams, args)
+  log:trace("RFP.GET_TASMOTA_DEVICE(%s, %s, %s, %s)", idBinding, strCommand, tParams, args)
+  local deviceId = tonumber(Select(tParams, "device_id"))
+  local mac = Select(tParams, "mac")
+  if not deviceId or IsEmpty(mac) then
+    log:warn("GET_TASMOTA_DEVICE needs device_id and mac")
+    return
+  end
+  local dev = tasmotaDevices[mac]
+  SendToDevice(deviceId, "TASMOTA_DEVICE", { mac = mac, device = dev and JSON:encode(dev) or "" })
+end
+
 -----------------------------------------------------------------------
 -- Actions
 -----------------------------------------------------------------------
+
+function EC.PrintTasmotaDevices()
+  local list = {}
+  for _, dev in pairs(tasmotaDevices) do
+    list[#list + 1] = dev
+  end
+  table.sort(list, function(a, b)
+    return a.name:lower() < b.name:lower()
+  end)
+  local lines = { string.format("==== %d Tasmota devices ====", #list) }
+  for _, dev in ipairs(list) do
+    local loads = {}
+    for _, l in ipairs(Tasmota.loads(dev)) do
+      loads[#loads + 1] = l.label .. " (" .. l.power .. ")"
+    end
+    lines[#lines + 1] = string.format(
+      "%-24s %-24s %-15s %-20s %s",
+      dev.name:sub(1, 24),
+      dev.topic:sub(1, 24),
+      dev.ip,
+      dev.model:sub(1, 20),
+      table.concat(loads, ", ")
+    )
+    for _, note in ipairs(Tasmota.notes(dev)) do
+      lines[#lines + 1] = "    ! " .. note
+    end
+  end
+  print(table.concat(lines, "\n"))
+end
+
+function EC.ForgetTasmotaDevices()
+  tasmotaDevices = {}
+  persist:set(TASMOTA_PERSIST_KEY, nil)
+  updateTasmotaProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
+  log:print("Forgot all Tasmota devices; connected devices are listed again when they next connect")
+end
 
 -- Action: Reconnect (External) / Restart (Built-in)
 function EC.Reconnect()

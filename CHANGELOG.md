@@ -18,6 +18,28 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+<!-- #ifndef DRIVERCENTRAL -->
+
+## Unreleased
+
+### Added
+
+- Added Tasmota discovery. The MQTT Broker driver finds Tasmota devices in both
+  modes and keeps the list across restarts; its Print Tasmota Devices action
+  shows them. The MQTT Light driver has a new **Tasmota Device** list: picking a
+  light or relay fills in every setting, including the right `POWER<n>`, split
+  RGB and white lights (`SetOption37`) and one dimmer per channel
+  (`SetOption68`). The light follows the device if its topic changes later.
+
+### Fixed
+
+- Fixed the release notes of v20261030 leaving out two fixes it already
+  contained: MQTT General temperature sensor items now update a bound
+  thermostat, and sensor and number variable items ignore `nan` and `inf`
+  payloads, keeping the last good value.
+
+<!-- #endif -->
+
 ## v20261030 - 2026-10-25
 
 ### Added

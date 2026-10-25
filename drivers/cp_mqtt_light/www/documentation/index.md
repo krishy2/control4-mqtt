@@ -155,6 +155,27 @@ means the opposite.
 
 #### Light Settings
 
+##### Tasmota Device
+
+The easiest way to set up a Tasmota light. The list shows every light and relay
+the MQTT Broker driver has found through Tasmota discovery, for example
+`Kitchen [tasmota_A1B2C3] RGBCCT light`. Picking one fills in every setting
+below: topics, value paths, `POWER<n>`, dimmer scale, color temperature range,
+color format, state request and Online/Offline.
+
+The light keeps following the device: if its topic or setup changes, the
+settings are updated. Choose `(Manual)` to stop following and keep the settings
+as they are, for example after editing them by hand.
+
+Tasmota announces itself when it connects to the broker, as long as discovery is
+on (`SetOption19 0`, the default). A device that does not appear in the list has
+discovery off or is not connected yet.
+
+##### Tasmota Notes (read-only)
+
+Shown when the chosen Tasmota device has a setting that keeps this light from
+working well, for example `SetOption4 1`, with what to change.
+
 ##### Capabilities (read-only)
 
 The abilities the light has right now, for example
@@ -315,7 +336,8 @@ on the device once with `Fade 1`.
 
 ## Example: Tasmota
 
-For a Tasmota bulb with topic `kitchen`:
+The quickest way is the [Tasmota Device](#tasmota-device) list. To set it up by
+hand, for a Tasmota bulb with topic `kitchen`:
 
 | Property                 | Value                 |
 | ------------------------ | --------------------- |

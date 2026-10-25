@@ -169,6 +169,18 @@
         <description>Current state as reported to Control4</description>
       </property>
       <property>
+        <name>Tasmota Device</name>
+        <type>DYNAMIC_LIST</type>
+        <description>Pick a Tasmota light or relay found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+      </property>
+      <property>
+        <name>Tasmota Notes</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Settings on the Tasmota device that should change for this light to work well</description>
+      </property>
+      <property>
         <name>Payload Mode</name>
         <type>LIST</type>
         <default>Separate Topics</default>

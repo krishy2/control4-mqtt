@@ -553,4 +553,134 @@ end)
 T.eq("no State Request Topic: nothing is sent", #published("cmnd/x/STATE"), 0)
 C4.GetTime = realGetTime
 
+-------------------------------------------------------------------------------
+T.section("Tasmota Device dropdown")
+-------------------------------------------------------------------------------
+local Tasmota = require("mqtt.tasmota")
+local lists = {}
+C4.UpdatePropertyList = function(_, name, items, current)
+  lists[name] = { items = items, current = current }
+end
+local function sentTo(command)
+  local out = {}
+  for _, m in ipairs(sent) do
+    if m.binding == BROKER and m.command == command then
+      out[#out + 1] = m.params
+    end
+  end
+  return out
+end
+local function tasmotaConfig(topic, lt, rl)
+  return Tasmota.parse(
+    string.format(
+      '{"ip":"10.0.0.7","dn":"Kitchen","fn":["Kitchen",null,null,null,null,null,null,null],"hn":"h","mac":"84F3EBA1B2C3",'
+        .. '"md":"Generic","ofln":"Offline","onln":"Online","state":["OFF","ON","TOGGLE","HOLD"],"sw":"14.3.0",'
+        .. '"t":"%s","ft":"%%prefix%%/%%topic%%/","tp":["cmnd","stat","tele"],"rl":[%s],'
+        .. '"so":{"4":0,"11":0,"13":0,"17":0,"20":0,"30":0,"68":0,"73":0,"82":0,"114":0,"117":0},"lk":1,"lt_st":%d,"ver":1}',
+      topic,
+      rl,
+      lt
+    )
+  )
+end
+local kitchen = tasmotaConfig("tasmota_kitchen", 5, "1,2,0,0,0,0,0,0")
+local function listPayload(dev)
+  return JSON:encode({ Tasmota.summary(dev) })
+end
+
+reset()
+Properties["Transition Command Topic"] = ""
+T.capture(function()
+  ReceivedFromProxy(5002, "BROKER_CONNECTED", {})
+end)
+T.eq("broker connected: the device list is requested", #sentTo("GET_TASMOTA_DEVICES"), 1)
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICES", { devices = listPayload(kitchen) })
+end)
+local dl = lists["Tasmota Device"]
+T.contains("the dropdown offers the light", dl and dl.items, "Kitchen [tasmota_kitchen] RGBCCT light")
+T.contains("and the relay", dl and dl.items, "Kitchen [tasmota_kitchen] Relay 1")
+T.eq("(Manual) stays selected", dl and dl.current, "(Manual)")
+
+reset()
+Properties["Tasmota Device"] = "Kitchen [tasmota_kitchen] RGBCCT light"
+T.capture(function()
+  OnPropertyChanged("Tasmota Device")
+end)
+local req = sentTo("GET_TASMOTA_DEVICE")[1]
+T.eq("choosing it asks for the device", req and req.mac, "84F3EBA1B2C3")
+
+reset()
+local applied, applyErr = T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "84F3EBA1B2C3", device = JSON:encode(kitchen) })
+end)
+T.check("applying runs without error", applied, applyErr)
+T.eq("power on output 2 of 2", { Properties["Power Value Path"], Properties["Power Command Topic"] }, {
+  "$.POWER2",
+  "cmnd/tasmota_kitchen/POWER2",
+})
+T.eq("availability", Properties["Availability Topic"], "tele/tasmota_kitchen/LWT")
+local capsMsg2 = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
+T.eq("capabilities: dimmer, color and CT", {
+  capsMsg2 and capsMsg2.dimmer,
+  capsMsg2 and capsMsg2.supports_color,
+  capsMsg2 and capsMsg2.supports_color_correlated_temperature,
+}, { "true", "true", "true" })
+local subs2 = {}
+for _, m in ipairs(sentTo("SUBSCRIBE")) do
+  subs2[m.topic] = true
+end
+T.check("subscribes to RESULT", subs2["stat/tasmota_kitchen/RESULT"])
+T.check("and to LWT", subs2["tele/tasmota_kitchen/LWT"])
+T.eq("asks the device for its state", #published("cmnd/tasmota_kitchen/STATE"), 1)
+T.contains("Capabilities property", propertyWrites["Capabilities"], "Color Temp")
+
+reset()
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "stat/tasmota_kitchen/RESULT", payload = '{"POWER2":"ON","Dimmer":30}' })
+end)
+T.eq("its state reaches Control4", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 30)
+
+-------------------------------------------------------------------------------
+T.section("The light follows the device")
+-------------------------------------------------------------------------------
+Properties["Transition Command Topic"] = "cmnd/tasmota_kitchen/Speed"
+local renamed = tasmotaConfig("kitchen_light", 5, "1,2,0,0,0,0,0,0")
+reset()
+T.capture(function()
+  ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "84F3EBA1B2C3" })
+end)
+T.eq(
+  "a change asks for the list and the device",
+  { #sentTo("GET_TASMOTA_DEVICES"), #sentTo("GET_TASMOTA_DEVICE") },
+  { 1, 1 }
+)
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICES", { devices = listPayload(renamed) })
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "84F3EBA1B2C3", device = JSON:encode(renamed) })
+end)
+T.eq("topics follow the new device topic", Properties["Power Command Topic"], "cmnd/kitchen_light/POWER2")
+T.eq("a Tasmota fade topic follows too", Properties["Transition Command Topic"], "cmnd/kitchen_light/Speed")
+T.eq("the dropdown shows the new name", lists["Tasmota Device"].current, "Kitchen [kitchen_light] RGBCCT light")
+
+reset()
+T.capture(function()
+  ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "OTHERMAC" })
+end)
+T.eq("another device changing does not touch this light", #sentTo("GET_TASMOTA_DEVICE"), 0)
+
+-------------------------------------------------------------------------------
+T.section("Back to Manual")
+-------------------------------------------------------------------------------
+Properties["Tasmota Device"] = "(Manual)"
+T.capture(function()
+  OnPropertyChanged("Tasmota Device")
+end)
+reset()
+T.capture(function()
+  ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "84F3EBA1B2C3" })
+end)
+T.eq("Manual: device changes are no longer applied", #sentTo("GET_TASMOTA_DEVICE"), 0)
+T.eq("the settings stay as they were", Properties["Power Command Topic"], "cmnd/kitchen_light/POWER2")
+
 T.finish()

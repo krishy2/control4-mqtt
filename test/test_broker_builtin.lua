@@ -43,16 +43,24 @@ C4.GetDriverConfigInfo = function(c4, section)
   return realGetDriverConfigInfo(c4, section)
 end
 local mqttClients = 0
+local lastMqtt = nil
+--- Fake C4:MQTT client: On* callbacks are kept, every other call is recorded.
 C4.MQTT = function()
   mqttClients = mqttClients + 1
-  local client = {}
+  local client = { callbacks = {}, calls = {} }
   setmetatable(client, {
-    __index = function()
-      return function()
+    __index = function(_, name)
+      return function(self, ...)
+        if name:sub(1, 2) == "On" then
+          self.callbacks[name] = ...
+        else
+          self.calls[#self.calls + 1] = { name, ... }
+        end
         return 0
       end
     end,
   })
+  lastMqtt = client
   return client
 end
 
@@ -312,6 +320,83 @@ T.eq(
 )
 
 -------------------------------------------------------------------------------
+T.section("Tasmota discovery through the built-in broker")
+-------------------------------------------------------------------------------
+local function discoveryPayload(topic, name, lt, rl)
+  return string.format(
+    '{"ip":"10.0.0.9","dn":"%s","fn":["%s",null,null,null,null,null,null,null],"hn":"%s","mac":"%s",'
+      .. '"md":"Generic","ty":0,"if":0,"cam":0,"ofln":"Offline","onln":"Online",'
+      .. '"state":["OFF","ON","TOGGLE","HOLD"],"sw":"14.3.0","t":"%s","ft":"%%prefix%%/%%topic%%/",'
+      .. '"tp":["cmnd","stat","tele"],"rl":[%s],"swc":[],"swn":[],"btn":[],'
+      .. '"so":{"4":0,"11":0,"13":0,"17":0,"20":0,"30":0,"68":0,"73":0,"82":0,"114":0,"117":0},'
+      .. '"lk":1,"lt_st":%d,"bat":0,"dslp":0,"sho":[],"sht":[],"ver":1}',
+    name,
+    name,
+    topic,
+    "MAC" .. topic,
+    topic,
+    rl,
+    lt
+  )
+end
+
+local tasDev = accept(last(servers), "9")
+tasDev:feed(Codec.connect({ clientId = "DVES_9", keepAlive = 30 }))
+proxyMsgs = {}
+tasDev:feed(
+  Codec.publish("tasmota/discovery/MACkitchen/config", discoveryPayload("kitchen", "Kitchen", 5, "2,0,0,0,0,0,0,0"), {
+    retain = true,
+  })
+)
+T.eq("Tasmota Devices property counts it", propertyWrites["Tasmota Devices"], "1")
+T.eq("children hear TASMOTA_DEVICES_CHANGED", notifies("TASMOTA_DEVICES_CHANGED"), 1)
+proxyMsgs = {}
+tasDev:feed(
+  Codec.publish("tasmota/discovery/MACkitchen/config", discoveryPayload("kitchen", "Kitchen", 5, "2,0,0,0,0,0,0,0"), {
+    retain = true,
+  })
+)
+T.eq("the same config again changes nothing", notifies("TASMOTA_DEVICES_CHANGED"), 0)
+tasDev:feed(Codec.publish("tasmota/discovery/MAChall/config", discoveryPayload("hall", "Hall", 0, "1,1,0,0,0,0,0,0"), {
+  retain = true,
+}))
+
+deviceMsgs = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICES", { device_id = "101" })
+end)
+local reply = last(deviceMsgs)
+T.eq(
+  "the list goes to the asking driver",
+  { reply and reply.deviceId, reply and reply.command },
+  { 101, "TASMOTA_DEVICES" }
+)
+local list = JSON:decode(reply.params.devices)
+T.eq("sorted by name", { list[1].name, list[2].name }, { "Hall", "Kitchen" })
+T.eq("with their loads", { #list[1].loads, list[2].loads[1].label }, { 2, "RGBCCT light" })
+
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICE", { device_id = "101", mac = "MACkitchen" })
+end)
+reply = last(deviceMsgs)
+local detail = JSON:decode(reply.params.device)
+T.eq("one device in full", { reply.command, detail.topic, detail.lightType }, { "TASMOTA_DEVICE", "kitchen", 5 })
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICE", { device_id = "101", mac = "nope" })
+end)
+T.eq("an unknown device answers empty", last(deviceMsgs).params.device, "")
+
+proxyMsgs = {}
+tasDev:feed(Codec.publish("tasmota/discovery/MAChall/config", "", { retain = true }))
+T.eq("an empty config removes the device", propertyWrites["Tasmota Devices"], "1")
+T.eq("and children hear about it", notifies("TASMOTA_DEVICES_CHANGED"), 1)
+
+local _, _, printed = T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "PrintTasmotaDevices" })
+end)
+T.contains("Print Tasmota Devices", printed, "RGBCCT light (POWER)")
+
+-------------------------------------------------------------------------------
 T.section("Back to External")
 -------------------------------------------------------------------------------
 local srvBuiltIn = last(servers)
@@ -328,5 +413,40 @@ T.capture(function()
   ReceivedFromProxy(5001, "GET_STATUS", {})
 end)
 T.eq("not connected until the external broker answers", notifies("BROKER_DISCONNECTED"), 1)
+
+-------------------------------------------------------------------------------
+T.section("Tasmota discovery through an external broker")
+-------------------------------------------------------------------------------
+local client = lastMqtt
+T.capture(function()
+  client.callbacks.OnConnect(client, 0, 0, "")
+end)
+local subscribedDiscovery = false
+for _, call in ipairs(client.calls) do
+  if call[1] == "Subscribe" and call[2] == "tasmota/discovery/+/config" then
+    subscribedDiscovery = true
+  end
+end
+T.check("subscribes to tasmota/discovery/+/config on connect", subscribedDiscovery)
+proxyMsgs = {}
+deviceMsgs = {}
+T.capture(function()
+  client.callbacks.OnMessage(
+    client,
+    1,
+    "tasmota/discovery/MACporch/config",
+    discoveryPayload("porch", "Porch", 1, "2,0,0,0,0,0,0,0"),
+    0,
+    true
+  )
+end)
+T.eq("an external discovery message is collected", propertyWrites["Tasmota Devices"], "2")
+T.eq("children hear about it", notifies("TASMOTA_DEVICES_CHANGED"), 1)
+T.eq("discovery is not routed to drivers that did not subscribe", #deviceMsgs, 0)
+
+T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "ForgetTasmotaDevices" })
+end)
+T.eq("Forget Tasmota Devices clears the list", propertyWrites["Tasmota Devices"], "0")
 
 T.finish()

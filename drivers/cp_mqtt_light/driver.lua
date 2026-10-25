@@ -19,12 +19,15 @@ local constants = require("constants")
 
 local MqttDevice = require("mqtt.entities.device")
 local MqttLight = require("mqtt.light")
+local Tasmota = require("mqtt.tasmota")
 
 -- Binding IDs
 local LIGHT_PROXY_BINDING = 5001
 local MQTT_BINDING = 5002
 
 local SETTINGS_PERSIST_KEY = "LightSettings"
+local TASMOTA_PERSIST_KEY = "TasmotaSelection"
+local MANUAL = "(Manual)"
 
 --- Properties that make up the light configuration. A change to any of them
 --- reconfigures the light.
@@ -370,6 +373,10 @@ function OnDriverLateInit()
   updateStateProperty()
   updateOnline(true)
 
+  tasmotaSelection = persist:get(TASMOTA_PERSIST_KEY, nil)
+  updateTasmotaList()
+  setTasmotaNotes("")
+
   -- Request current broker status
   SendToProxy(MQTT_BINDING, "GET_STATUS", {}, "NOTIFY")
 end
@@ -490,6 +497,171 @@ for _, name in ipairs(CONFIG_PROPERTIES) do
 end
 
 -----------------------------------------------------------------------
+-- Tasmota discovery: pick a device, every setting follows
+-----------------------------------------------------------------------
+
+--- Dropdown label -> { mac, load }
+local tasmotaChoices = {}
+--- The chosen device and output, kept across restarts: { mac, load, label }
+local tasmotaSelection = nil
+
+local function deviceId()
+  return tostring(C4:GetDeviceID())
+end
+
+local function requestTasmotaList()
+  SendToProxy(MQTT_BINDING, "GET_TASMOTA_DEVICES", { device_id = deviceId() })
+end
+
+local function requestTasmotaDevice(mac)
+  SendToProxy(MQTT_BINDING, "GET_TASMOTA_DEVICE", { device_id = deviceId(), mac = mac })
+end
+
+local function setTasmotaNotes(text)
+  UpdateProperty("Tasmota Notes", text or "")
+  C4:SetPropertyAttribs("Tasmota Notes", IsEmpty(text) and constants.HIDE_PROPERTY or constants.SHOW_PROPERTY)
+end
+
+--- Rebuild the Tasmota Device dropdown.
+local function updateTasmotaList()
+  local labels = {}
+  for label in pairs(tasmotaChoices) do
+    labels[#labels + 1] = label
+  end
+  table.sort(labels, function(a, b)
+    return a:lower() < b:lower()
+  end)
+  local current = MANUAL
+  if tasmotaSelection ~= nil then
+    current = tasmotaSelection.label
+    if tasmotaChoices[current] == nil then
+      -- Chosen device not announced (yet): keep it selectable
+      labels[#labels + 1] = current
+    end
+  end
+  table.insert(labels, 1, MANUAL)
+  C4:UpdatePropertyList("Tasmota Device", table.concat(labels, ","), current)
+end
+
+--- Fill in every setting for the chosen device and output.
+--- @param dev table parsed device (mqtt.tasmota)
+local function applyTasmotaDevice(dev)
+  local selection = tasmotaSelection
+  if selection == nil then
+    return
+  end
+  local props, err = Tasmota.lightProperties(dev, selection.load)
+  if props == nil then
+    setTasmotaNotes("This output no longer exists on " .. dev.topic .. " (" .. tostring(err) .. ")")
+    return
+  end
+  -- A Tasmota fade topic (cmnd/<topic>/Speed) follows the device; anything else stays.
+  local transition = Properties["Transition Command Topic"] or ""
+  if transition:match("/Speed$") then
+    props["Transition Command Topic"] = Tasmota.topicFor(dev, 1, "Speed")
+  end
+
+  local changed = {}
+  for name, value in pairs(props) do
+    if Properties[name] ~= nil and Properties[name] ~= value then
+      UpdateProperty(name, value)
+      Properties[name] = value
+      changed[#changed + 1] = name
+    end
+  end
+  table.sort(changed)
+  log:info("Applied Tasmota device %s (%s): %d settings changed", dev.topic, selection.load, #changed)
+  setTasmotaNotes(table.concat(Tasmota.notes(dev), " "))
+
+  -- Availability has its own handler (events, subscription); then everything else.
+  OnPropertyChanged("Availability Topic")
+  OnPropertyChanged("Availability Value Path")
+  applyConfig(false)
+  requestState("Tasmota device applied")
+end
+
+function OPC.Tasmota_Device(propertyValue)
+  log:trace("OPC.Tasmota_Device('%s')", propertyValue)
+  if not gInitialized then
+    return
+  end
+  if IsEmpty(propertyValue) or propertyValue == MANUAL then
+    if tasmotaSelection ~= nil then
+      log:info("Tasmota device cleared; settings stay as they are")
+    end
+    tasmotaSelection = nil
+    persist:set(TASMOTA_PERSIST_KEY, nil)
+    setTasmotaNotes("")
+    return
+  end
+  local choice = tasmotaChoices[propertyValue]
+  if choice == nil then
+    return -- the stored selection, shown before the list arrived
+  end
+  tasmotaSelection = { mac = choice.mac, load = choice.load, label = propertyValue }
+  persist:set(TASMOTA_PERSIST_KEY, tasmotaSelection)
+  requestTasmotaDevice(choice.mac)
+end
+
+--- The broker's list of Tasmota devices.
+function EC.TASMOTA_DEVICES(tParams)
+  log:trace("EC.TASMOTA_DEVICES()")
+  local ok, list = pcall(JSON.decode, JSON, Select(tParams, "devices") or "[]")
+  if not ok or type(list) ~= "table" then
+    log:warn("Could not read the Tasmota device list")
+    return
+  end
+  tasmotaChoices = {}
+  for _, dev in ipairs(list) do
+    for _, load in ipairs(dev.loads or {}) do
+      local label = string.format("%s [%s] %s", tostring(dev.name), tostring(dev.topic), tostring(load.label))
+      label = label:gsub(",", " ")
+      tasmotaChoices[label] = { mac = dev.mac, load = load.id }
+      -- The chosen output may have been renamed: keep following it by MAC and output.
+      if tasmotaSelection and tasmotaSelection.mac == dev.mac and tasmotaSelection.load == load.id then
+        if tasmotaSelection.label ~= label then
+          tasmotaSelection.label = label
+          persist:set(TASMOTA_PERSIST_KEY, tasmotaSelection)
+        end
+      end
+    end
+  end
+  updateTasmotaList()
+end
+
+--- One device in full, after choosing it or when it changed.
+function EC.TASMOTA_DEVICE(tParams)
+  local mac = Select(tParams, "mac")
+  log:trace("EC.TASMOTA_DEVICE(%s)", mac)
+  if tasmotaSelection == nil or mac ~= tasmotaSelection.mac then
+    return
+  end
+  local payload = Select(tParams, "device") or ""
+  if payload == "" then
+    setTasmotaNotes("The broker does not know this device any more. Check that it is connected.")
+    return
+  end
+  local ok, dev = pcall(JSON.decode, JSON, payload)
+  if not ok or type(dev) ~= "table" then
+    log:warn("Could not read Tasmota device %s", mac)
+    return
+  end
+  applyTasmotaDevice(dev)
+end
+
+--- A device appeared, changed or disappeared.
+function RFP.TASMOTA_DEVICES_CHANGED(idBinding, strCommand, tParams, args)
+  if idBinding ~= MQTT_BINDING then
+    return
+  end
+  local mac = Select(tParams, "mac")
+  requestTasmotaList()
+  if tasmotaSelection ~= nil and (IsEmpty(mac) or mac == tasmotaSelection.mac) then
+    requestTasmotaDevice(tasmotaSelection.mac)
+  end
+end
+
+-----------------------------------------------------------------------
 -- Receive From Proxy (RFP) handlers
 -----------------------------------------------------------------------
 
@@ -504,6 +676,7 @@ function RFP.BROKER_CONNECTED(idBinding, strCommand, tParams, args)
   MqttDevice:subscribeToAvailability(Properties["Availability Topic"], tostring(C4:GetDeviceID()))
   updateOnline()
   requestState("broker connected")
+  requestTasmotaList()
 end
 
 function RFP.BROKER_DISCONNECTED(idBinding, strCommand, tParams, args)

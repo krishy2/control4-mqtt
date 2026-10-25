@@ -79,6 +79,8 @@ The MQTT driver suite consists of three drivers:
   MQTT 3.1 and 3.1.1, retained messages, Last Will, wildcards
 - **External broker** with username/password authentication and automatic
   reconnection
+- **Tasmota discovery**: finds Tasmota devices so the MQTT Light driver can set
+  itself up from a list
 - Manages subscriptions for connected child drivers
 - Message caching for late-subscribing devices
 - Automatic updates of all MQTT drivers from GitHub
@@ -177,6 +179,14 @@ Sets the logging mode. Default is `Off`.
 controller the broker. Changing it restarts the MQTT connection; the other
 drivers reconnect on their own.
 
+#### Tasmota Devices (read-only)
+
+How many Tasmota devices the broker has found. Tasmota announces itself on
+`tasmota/discovery/<MAC>/config` when it connects, as long as discovery is on
+(`SetOption19 0`, the default). This works in both modes. The list is kept when
+the controller restarts, and the MQTT Light driver offers these devices in its
+Tasmota Device list.
+
 ### External Broker Settings
 
 Shown in External mode.
@@ -259,6 +269,16 @@ Built-in mode: prints every statistic of the built-in broker.
 ### Reset Statistics
 
 Built-in mode: resets the counters.
+
+### Print Tasmota Devices
+
+Prints every Tasmota device found: name, topic, IP address, model and its lights
+and relays with their `POWER` index, plus any settings to change on the device.
+
+### Forget Tasmota Devices
+
+Clears the list. Devices that are connected are found again the next time they
+connect (or restart them, or run `SetOption19 0` on them).
 
 ### Update Drivers
 

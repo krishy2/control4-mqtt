@@ -120,6 +120,13 @@
         <description>External: connect to an MQTT broker on the network. Built-in: the controller is the broker and devices connect to it on Listen Port.</description>
       </property>
       <property>
+        <name>Tasmota Devices</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Tasmota devices found through discovery (SetOption19 0, the Tasmota default)</description>
+      </property>
+      <property>
         <name>Broker Settings</name>
         <type>LABEL</type>
         <default>Broker Settings</default>
@@ -231,6 +238,14 @@
       <action>
         <name>Reset Statistics</name>
         <command>ResetStatistics</command>
+      </action>
+      <action>
+        <name>Print Tasmota Devices</name>
+        <command>PrintTasmotaDevices</command>
+      </action>
+      <action>
+        <name>Forget Tasmota Devices</name>
+        <command>ForgetTasmotaDevices</command>
       </action>
     </actions>
   </config>
