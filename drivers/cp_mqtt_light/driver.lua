@@ -29,6 +29,14 @@ local SETTINGS_PERSIST_KEY = "LightSettings"
 local TASMOTA_PERSIST_KEY = "TasmotaSelection"
 local MANUAL = "(Manual)"
 
+-- Tasmota device choice. Declared here because start-up uses them; they are
+-- filled in by the Tasmota discovery section further down.
+--- Dropdown label -> { mac, load }
+local tasmotaChoices = {}
+--- The chosen device and output, kept across restarts: { mac, load, label }
+local tasmotaSelection = nil
+local updateTasmotaList, setTasmotaNotes
+
 --- Properties that make up the light configuration. A change to any of them
 --- reconfigures the light.
 local CONFIG_PROPERTIES = {
@@ -500,11 +508,6 @@ end
 -- Tasmota discovery: pick a device, every setting follows
 -----------------------------------------------------------------------
 
---- Dropdown label -> { mac, load }
-local tasmotaChoices = {}
---- The chosen device and output, kept across restarts: { mac, load, label }
-local tasmotaSelection = nil
-
 local function deviceId()
   return tostring(C4:GetDeviceID())
 end
@@ -517,13 +520,13 @@ local function requestTasmotaDevice(mac)
   SendToProxy(MQTT_BINDING, "GET_TASMOTA_DEVICE", { device_id = deviceId(), mac = mac })
 end
 
-local function setTasmotaNotes(text)
+setTasmotaNotes = function(text)
   UpdateProperty("Tasmota Notes", text or "")
   C4:SetPropertyAttribs("Tasmota Notes", IsEmpty(text) and constants.HIDE_PROPERTY or constants.SHOW_PROPERTY)
 end
 
 --- Rebuild the Tasmota Device dropdown.
-local function updateTasmotaList()
+updateTasmotaList = function()
   local labels = {}
   for label in pairs(tasmotaChoices) do
     labels[#labels + 1] = label

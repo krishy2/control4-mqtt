@@ -450,14 +450,14 @@ C4.UpdateProperty = function(_, name, value)
   propertyWrites[name] = value
 end
 reset()
-local ok, err = pcall(function()
-  T.capture(function()
-    dofile("drivers/cp_mqtt_light/driver.lua")
-    OnDriverInit()
-    OnDriverLateInit()
-  end)
+-- T.capture returns pcall's result itself; wrapping it in another pcall would hide errors.
+local ok, err = T.capture(function()
+  dofile("drivers/cp_mqtt_light/driver.lua")
+  OnDriverInit()
+  OnDriverLateInit()
 end)
 T.check("driver init runs without error", ok, err)
+T.eq("no driver code leaks into globals", { rawget(_G, "tasmotaSelection"), rawget(_G, "tasmotaChoices") }, {})
 local capsMsg = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
 T.check("capabilities are sent at startup", capsMsg ~= nil)
 T.eq("a light with no topics starts as a switch", capsMsg and capsMsg.dimmer, "false")
@@ -668,6 +668,26 @@ T.capture(function()
   ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "OTHERMAC" })
 end)
 T.eq("another device changing does not touch this light", #sentTo("GET_TASMOTA_DEVICE"), 0)
+
+-------------------------------------------------------------------------------
+T.section("The choice survives a restart")
+-------------------------------------------------------------------------------
+lists["Tasmota Device"] = nil
+local restarted, restartErr = T.capture(function()
+  OnDriverInit()
+  OnDriverLateInit()
+end)
+T.check("restart runs without error", restarted, restartErr)
+T.eq(
+  "the chosen device is still selected",
+  lists["Tasmota Device"] and lists["Tasmota Device"].current,
+  "Kitchen [kitchen_light] RGBCCT light"
+)
+reset()
+T.capture(function()
+  ReceivedFromProxy(5002, "TASMOTA_DEVICES_CHANGED", { mac = "84F3EBA1B2C3" })
+end)
+T.eq("and still followed", #sentTo("GET_TASMOTA_DEVICE"), 1)
 
 -------------------------------------------------------------------------------
 T.section("Back to Manual")
