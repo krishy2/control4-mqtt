@@ -341,44 +341,81 @@ local function updateStateProperty()
 end
 
 -----------------------------------------------------------------------
--- On, Off and Toggle button links (keypad buttons)
+-- ON, OFF and Toggle button links (keypad buttons) and their LED colors
 -----------------------------------------------------------------------
 
---- What each link last told its keypads, so a ramp does not repeat it.
-local ledSent = {}
+local BUTTON_COLORS_PERSIST_KEY = "ButtonColors"
+--- { [buttonId] = { onColor, offColor } }, chosen in the proxy's LED colors
+local buttonColors = ButtonLinks.load(nil)
+--- Light state the links last reported, so a ramp does not repeat it.
+local ledState = nil
 
---- The LED colors set in Properties for a link ("rrggbb"), defaults when unset.
-local function linkColors(link)
-  local onName, offName = ButtonLinks.propertyNames(link)
-  local whenOn = ButtonLinks.color(Properties[onName])
-  local whenOff = ButtonLinks.color(Properties[offName])
-  if whenOn == nil and not IsEmpty(Properties[onName]) then
-    log:warn("%s: '%s' is not a color", onName, Properties[onName])
-  end
-  if whenOff == nil and not IsEmpty(Properties[offName]) then
-    log:warn("%s: '%s' is not a color", offName, Properties[offName])
-  end
-  return whenOn, whenOff
+local function lightIsOn()
+  return light ~= nil and (light.level or 0) > 0
 end
 
---- Tell the keypads on each link whether to light their LED, and in which color.
---- @param force boolean|nil send even if nothing changed
+local function linkIsBound(link)
+  return C4:GetBoundConsumerDevices(0, link.binding) ~= nil
+end
+
+--- Tell keypads on a link which colors to use, and whether the light is on.
+local function sendLinkColors(link)
+  local c = buttonColors[link.button]
+  SendToProxy(link.binding, "BUTTON_COLORS", { ON_COLOR = c.onColor, OFF_COLOR = c.offColor }, "NOTIFY")
+  SendToProxy(link.binding, "MATCH_LED_STATE", { STATE = tostring(lightIsOn()) })
+end
+
+--- Keypads follow the light: on every bound link, when it turns on or off.
+--- @param force boolean|nil send even if the light did not change
 local function updateButtonLeds(force)
-  if light == nil then
+  local on = lightIsOn()
+  if not force and on == ledState then
     return
   end
-  local on = (light.level or 0) > 0
+  ledState = on
   for _, link in ipairs(ButtonLinks.LINKS) do
-    local led = ButtonLinks.ledMessages(link, on, linkColors(link))
-    local c = led.colors
-    local key = table.concat({ led.state, c.ON_COLOR, c.OFF_COLOR, c.CURRENT_COLOR }, " ")
-    if force or ledSent[link.binding] ~= key then
-      ledSent[link.binding] = key
-      log:debug("%s Button Link: LED %s, color %s", link.name, led.lit and "lit" or "off", c.CURRENT_COLOR)
-      SendToProxy(link.binding, "BUTTON_COLORS", c, "COMMAND")
-      SendToProxy(link.binding, "MATCH_LED_STATE", { STATE = led.state }, "COMMAND")
+    if linkIsBound(link) then
+      log:debug("%s Button Link: light %s", link.name, on and "on" or "off")
+      SendToProxy(link.binding, "MATCH_LED_STATE", { STATE = tostring(on) })
     end
   end
+end
+
+--- A color chosen in the proxy's LED colors (SET_BUTTON_COLOR / SET_ALL_LED).
+local function setButtonColor(buttonId, onColor, offColor)
+  if ButtonLinks.set(buttonColors, buttonId, onColor, offColor) then
+    persist:set(BUTTON_COLORS_PERSIST_KEY, buttonColors)
+  end
+  local c = buttonColors[buttonId]
+  log:debug("Button %d LED colors: on %s, off %s", buttonId, c.onColor, c.offColor)
+  SendToProxy(LIGHT_PROXY_BINDING, "BUTTON_INFO", {
+    BUTTON_ID = buttonId,
+    ON_COLOR = c.onColor,
+    OFF_COLOR = c.offColor,
+    CURRENT_COLOR = ButtonLinks.current(buttonColors, buttonId, lightIsOn()),
+  }, "NOTIFY")
+  local link = ButtonLinks.LINKS[buttonId + 1]
+  if link and linkIsBound(link) then
+    sendLinkColors(link)
+  end
+end
+
+--- Proxy commands about button LEDs; true when handled.
+local function handleButtonColorCommand(strCommand, tParams)
+  if strCommand == "SET_BUTTON_COLOR" then
+    local buttonId = ButtonLinks.buttonId(Select(tParams, "BUTTON_ID"))
+    if buttonId ~= nil then
+      setButtonColor(buttonId, Select(tParams, "ON_COLOR"), Select(tParams, "OFF_COLOR"))
+    end
+    return true
+  elseif strCommand == "SET_ALL_LED" then
+    local color = Select(tParams, "COLOR")
+    for id = 0, ButtonLinks.COUNT - 1 do
+      setButtonColor(id, color, color)
+    end
+    return true
+  end
+  return false
 end
 
 for _, link in ipairs(ButtonLinks.LINKS) do
@@ -387,26 +424,18 @@ for _, link in ipairs(ButtonLinks.LINKS) do
     log:debug("%s Button Link: %s", link.name, strCommand)
     local action = ButtonLinks.ACTIONS[strCommand]
     if action ~= nil then
-      light:buttonAction(link.button, action, true)
-    elseif strCommand == "REQUEST_BUTTON_COLORS" or strCommand == "REQUEST_LED_STATE" then
-      updateButtonLeds(true)
+      light:buttonAction(link.button, action)
+    elseif strCommand == "REQUEST_BUTTON_COLORS" then
+      sendLinkColors(link)
     else
       log:debug("Unhandled command on the %s Button Link: %s", link.name, strCommand)
     end
   end
-  --- A keypad button was bound: show it the current state at once.
+  --- A keypad button was bound: give it the colors and the light's state.
   OBC[link.binding] = function(idBinding, strClass, bIsBound, otherDeviceId, otherBindingId)
     log:trace("OBC[%s](%s, %s, %s, %s)", idBinding, strClass, bIsBound, otherDeviceId, otherBindingId)
     if bIsBound then
-      updateButtonLeds(true)
-    end
-  end
-  local onName, offName = ButtonLinks.propertyNames(link)
-  for _, name in ipairs({ onName, offName }) do
-    OPC[(name:gsub("%W", "_"))] = function()
-      if gInitialized then
-        updateButtonLeds(true)
-      end
+      sendLinkColors(link)
     end
   end
 end
@@ -479,6 +508,7 @@ function OnDriverLateInit()
   applyConfig(true)
   updateStateProperty()
   updateOnline(true)
+  buttonColors = ButtonLinks.load(persist:get(BUTTON_COLORS_PERSIST_KEY, nil))
   updateButtonLeds(true)
 
   tasmotaSelection = persist:get(TASMOTA_PERSIST_KEY, nil)
@@ -860,6 +890,9 @@ end
 --- Commands from the light_v2 proxy.
 RFP[LIGHT_PROXY_BINDING] = function(idBinding, strCommand, tParams, _args)
   log:debug("Light command %s %s", strCommand, tParams)
+  if handleButtonColorCommand(strCommand, tParams or {}) then
+    return
+  end
   if not light:handleProxyCommand(strCommand, tParams or {}) then
     log:debug("Unhandled light command: %s", strCommand)
   end

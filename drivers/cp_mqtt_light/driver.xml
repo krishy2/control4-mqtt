@@ -43,11 +43,12 @@
     <reduced_als_support>true</reduced_als_support>
     <advanced_scene_support>false</advanced_scene_support>
     <load_group_support>false</load_group_support>
-    <has_leds>false</has_leds>
+    <has_leds>true</has_leds>
     <cold_start>false</cold_start>
     <min_max>false</min_max>
-    <has_button_events>false</has_button_events>
-    <buttons_are_virtual>true</buttons_are_virtual>
+    <has_button_events>true</has_button_events>
+    <num_buttons>3</num_buttons>
+    <buttons_are_virtual>false</buttons_are_virtual>
     <hide_proxy_properties>false</hide_proxy_properties>
     <hide_proxy_events>false</hide_proxy_events>
   </capabilities>
@@ -548,47 +549,6 @@
         </items>
         <description>Unit of the transition value. Tasmota Speed: 1-40 half-seconds (enable Fade on the device).</description>
       </property>
-      <property>
-        <name>Button Links</name>
-        <type>LABEL</type>
-        <default>Button Links</default>
-      </property>
-      <property>
-        <name>On Button LED When Light On</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,255</default>
-        <description>LED color of keypad buttons bound to the On Button Link while the light is on</description>
-      </property>
-      <property>
-        <name>On Button LED When Light Off</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,0</default>
-        <description>LED color of keypad buttons bound to the On Button Link while the light is off</description>
-      </property>
-      <property>
-        <name>Off Button LED When Light On</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,0</default>
-        <description>LED color of keypad buttons bound to the Off Button Link while the light is on</description>
-      </property>
-      <property>
-        <name>Off Button LED When Light Off</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,255</default>
-        <description>LED color of keypad buttons bound to the Off Button Link while the light is off</description>
-      </property>
-      <property>
-        <name>Toggle Button LED When Light On</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,255</default>
-        <description>LED color of keypad buttons bound to the Toggle Button Link while the light is on</description>
-      </property>
-      <property>
-        <name>Toggle Button LED When Light Off</name>
-        <type>COLOR_SELECTOR</type>
-        <default>0,0,0</default>
-        <description>LED color of keypad buttons bound to the Toggle Button Link while the light is off</description>
-      </property>
     </properties>
     <commands/>
   </config>
@@ -627,9 +587,9 @@
       <hidden>False</hidden>
     </connection>
     <connection>
-      <id>200</id>
+      <id>300</id>
       <facing>6</facing>
-      <connectionname>On Button Link</connectionname>
+      <connectionname>ON Button Link</connectionname>
       <type>1</type>
       <consumer>False</consumer>
       <audiosource>False</audiosource>
@@ -643,9 +603,9 @@
       <hidden>False</hidden>
     </connection>
     <connection>
-      <id>201</id>
+      <id>301</id>
       <facing>6</facing>
-      <connectionname>Off Button Link</connectionname>
+      <connectionname>OFF Button Link</connectionname>
       <type>1</type>
       <consumer>False</consumer>
       <audiosource>False</audiosource>
@@ -659,7 +619,7 @@
       <hidden>False</hidden>
     </connection>
     <connection>
-      <id>202</id>
+      <id>302</id>
       <facing>6</facing>
       <connectionname>Toggle Button Link</connectionname>
       <type>1</type>

@@ -18,6 +18,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102507 - 2026-10-25
+
+### Fixed
+
+- MQTT Light button links now work like Control4's own lights: the ON, OFF and
+  Toggle Button Links are bindings 300-302, and the keypad LED colors are chosen
+  in the light's Brightness tab (Button and Button Connection Status LED
+  Colors), which Composer now shows. Keypads get the colors and the light's
+  on/off state on every bound link. This replaces the six color properties of
+  v2026102506.
+
 ## v2026102506 - 2026-10-25
 
 ### Added

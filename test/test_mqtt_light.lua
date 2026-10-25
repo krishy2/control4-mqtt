@@ -834,9 +834,9 @@ end)
 T.contains("Control4 turns it off over RPC", published(SP .. "/rpc")[1], '"on":false')
 
 -------------------------------------------------------------------------------
-T.section("On, Off and Toggle button links")
+T.section("ON, OFF and Toggle button links")
 -------------------------------------------------------------------------------
-for id, name in pairs({ [200] = "On Button Link", [201] = "Off Button Link", [202] = "Toggle Button Link" }) do
+for id, name in pairs({ [300] = "ON Button Link", [301] = "OFF Button Link", [302] = "Toggle Button Link" }) do
   local found = false
   for conn in xml:gmatch("<connection>(.-)</connection>") do
     if conn:find("<id>" .. id .. "</id>", 1, true) then
@@ -847,18 +847,9 @@ for id, name in pairs({ [200] = "On Button Link", [201] = "Off Button Link", [20
   end
   T.check("driver.xml declares the " .. name .. " (" .. id .. ")", found)
 end
-for _, color in ipairs({ "On", "Off", "Toggle" }) do
-  for _, when in ipairs({ "On", "Off" }) do
-    local propName = color .. " Button LED When Light " .. when
-    local declared = false
-    for block in xml:gmatch("<property>(.-)</property>") do
-      if block:find("<name>" .. propName .. "</name>", 1, true) then
-        declared = block:find("<type>COLOR_SELECTOR</type>", 1, true) ~= nil
-      end
-    end
-    T.check(propName .. " is a color picker", declared)
-  end
-end
+T.contains("has_leds: Composer shows the LED colors", xml, "<has_leds>true</has_leds>")
+T.contains("has_button_events", xml, "<has_button_events>true</has_button_events>")
+T.contains("three buttons", xml, "<num_buttons>3</num_buttons>")
 
 local function onLink(binding, command)
   local out = {}
@@ -870,14 +861,18 @@ local function onLink(binding, command)
   return out
 end
 
+-- Keypad buttons bound to the ON and Toggle links (as Composer does).
+C4:Bind(12345, 300, 700, 1, "BUTTON_LINK")
+C4:Bind(12345, 302, 701, 1, "BUTTON_LINK")
+
 -- The light is the Shelly RGBW from the section above: commands go over RPC.
 reset()
 T.capture(function()
-  ReceivedFromProxy(200, "DO_PUSH", {})
-  ReceivedFromProxy(200, "DO_CLICK", {})
+  ReceivedFromProxy(300, "DO_PUSH", {})
+  ReceivedFromProxy(300, "DO_CLICK", {})
 end)
-T.contains("On link click turns the light on", published(SP .. "/rpc")[1], '"on":true')
-T.eq("the link press is not echoed as a proxy button", #notifies("BUTTON_ACTION"), 0)
+T.contains("ON link tap turns the light on", published(SP .. "/rpc")[1], '"on":true')
+T.eq("echoed to the proxy as button 0 like a stock driver", last(notifies("BUTTON_ACTION")).BUTTON_ID, 0)
 
 -- Still on from the section above: switch it off first, so on is a change.
 T.capture(function()
@@ -893,16 +888,9 @@ T.capture(function()
     payload = '{"method":"NotifyStatus","params":{"ts":2,"rgbw:0":{"id":0,"output":true,"brightness":50}}}',
   })
 end)
-T.eq("light on: On link LED lit", last(onLink(200, "MATCH_LED_STATE")).STATE, "1")
-T.eq("Off link LED unlit", last(onLink(201, "MATCH_LED_STATE")).STATE, "0")
-T.eq("Toggle link LED lit", last(onLink(202, "MATCH_LED_STATE")).STATE, "1")
-local colors = last(onLink(200, "BUTTON_COLORS"))
-T.eq("On link colors", { colors.BUTTON_ID, colors.ON_COLOR, colors.OFF_COLOR, colors.CURRENT_COLOR }, {
-  "0",
-  "0000ff",
-  "000000",
-  "0000ff",
-})
+T.eq("light on: MATCH_LED_STATE true on the bound ON link", last(onLink(300, "MATCH_LED_STATE")).STATE, "true")
+T.eq("and on the bound Toggle link", last(onLink(302, "MATCH_LED_STATE")).STATE, "true")
+T.eq("not on the unbound OFF link", #onLink(301, "MATCH_LED_STATE"), 0)
 
 reset()
 T.capture(function()
@@ -911,21 +899,35 @@ T.capture(function()
     payload = '{"method":"NotifyStatus","params":{"ts":3,"rgbw:0":{"id":0,"brightness":60}}}',
   })
 end)
-T.eq("a brightness change alone does not resend the LEDs", #onLink(200, "MATCH_LED_STATE"), 0)
-
-reset()
-Properties["Toggle Button LED When Light On"] = "255,128,0"
-T.capture(function()
-  OnPropertyChanged("Toggle Button LED When Light On")
-end)
-T.eq("a new color goes out at once", last(onLink(202, "BUTTON_COLORS")).CURRENT_COLOR, "ff8000")
+T.eq("a brightness change alone does not resend it", #onLink(300, "MATCH_LED_STATE"), 0)
 
 reset()
 T.capture(function()
-  ReceivedFromProxy(201, "DO_PUSH", {})
-  ReceivedFromProxy(201, "DO_CLICK", {})
+  ReceivedFromProxy(5001, "SET_BUTTON_COLOR", {
+    BUTTON_ID = "2",
+    ON_COLOR = "00ff00",
+    OFF_COLOR = "0000ff",
+    CURRENT_COLOR = "00ff00",
+  })
 end)
-T.contains("Off link click turns the light off", published(SP .. "/rpc")[1], '"on":false')
+local info = last(notifies("BUTTON_INFO"))
+T.eq("a color from the proxy panel is confirmed with BUTTON_INFO", {
+  info and info.BUTTON_ID,
+  info and info.ON_COLOR,
+  info and info.OFF_COLOR,
+  info and info.CURRENT_COLOR,
+}, { 2, "00ff00", "0000ff", "00ff00" })
+local linkColors = last(onLink(302, "BUTTON_COLORS"))
+T.eq("and sent to the keypad on the Toggle link", { linkColors.ON_COLOR, linkColors.OFF_COLOR }, { "00ff00", "0000ff" })
+T.eq("with the light's state", last(onLink(302, "MATCH_LED_STATE")).STATE, "true")
+T.eq("not passed on to the light model", #published(SP .. "/rpc"), 0)
+
+reset()
+T.capture(function()
+  ReceivedFromProxy(301, "DO_PUSH", {})
+  ReceivedFromProxy(301, "DO_CLICK", {})
+end)
+T.contains("OFF link tap turns the light off", published(SP .. "/rpc")[1], '"on":false')
 
 reset()
 T.capture(function()
@@ -934,37 +936,53 @@ T.capture(function()
     payload = '{"method":"NotifyStatus","params":{"ts":4,"rgbw:0":{"id":0,"output":false}}}',
   })
 end)
-T.eq("light off: Off link LED lit", last(onLink(201, "MATCH_LED_STATE")).STATE, "1")
-T.eq("Toggle link in its off color", last(onLink(202, "BUTTON_COLORS")).CURRENT_COLOR, "000000")
+T.eq("light off: MATCH_LED_STATE false", last(onLink(300, "MATCH_LED_STATE")).STATE, "false")
 
 reset()
 T.capture(function()
-  ReceivedFromProxy(202, "DO_PUSH", {})
-  ReceivedFromProxy(202, "DO_CLICK", {})
+  ReceivedFromProxy(302, "DO_PUSH", {})
+  ReceivedFromProxy(302, "DO_CLICK", {})
 end)
-T.contains("Toggle link click while off turns it on", published(SP .. "/rpc")[1], '"on":true')
+T.contains("Toggle tap while off turns it on", published(SP .. "/rpc")[1], '"on":true')
 
 reset()
 T.capture(function()
-  ReceivedFromProxy(200, "DO_PUSH", {})
+  ReceivedFromProxy(300, "DO_PUSH", {})
   ShimFireTimers()
 end)
-T.contains("holding the On link dims up on the device", published(SP .. "/rpc")[1], "transition_duration")
+T.contains("holding the ON link dims up on the device", published(SP .. "/rpc")[1], "transition_duration")
 reset()
 T.capture(function()
-  ReceivedFromProxy(200, "DO_RELEASE", {})
+  ReceivedFromProxy(300, "DO_RELEASE", {})
 end)
 T.contains("releasing stops the fade where it is", published(SP .. "/rpc")[1], '"brightness"')
 
 reset()
 T.capture(function()
-  OnBindingChanged(201, "BUTTON_LINK", true, 999, 1)
+  ReceivedFromProxy(302, "REQUEST_BUTTON_COLORS", {})
 end)
-T.eq("binding a keypad button sends it the LED state", #onLink(201, "MATCH_LED_STATE"), 1)
+T.eq("a keypad asking gets the colors", last(onLink(302, "BUTTON_COLORS")).ON_COLOR, "00ff00")
 reset()
 T.capture(function()
-  ReceivedFromProxy(202, "REQUEST_BUTTON_COLORS", {})
+  OnBindingChanged(301, "BUTTON_LINK", true, 702, 1)
 end)
-T.eq("and a keypad asking gets the colors", #onLink(202, "BUTTON_COLORS"), 1)
+T.eq("binding a keypad button sends it the colors", last(onLink(301, "BUTTON_COLORS")).OFF_COLOR, "0000ff")
+
+reset()
+T.capture(function()
+  ReceivedFromProxy(5001, "SET_ALL_LED", { COLOR = "ff0000" })
+end)
+T.eq("SET_ALL_LED sets every button", #notifies("BUTTON_INFO"), 3)
+
+restarted, restartErr = T.capture(function()
+  OnDriverInit()
+  OnDriverLateInit()
+end)
+T.check("restart runs without error", restarted, restartErr)
+reset()
+T.capture(function()
+  ReceivedFromProxy(301, "REQUEST_BUTTON_COLORS", {})
+end)
+T.eq("chosen colors survive a restart", last(onLink(301, "BUTTON_COLORS")).ON_COLOR, "ff0000")
 
 T.finish()

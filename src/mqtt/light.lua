@@ -1629,16 +1629,13 @@ end
 --- Handle BUTTON_ACTION from the proxy (keypad bindings).
 --- @param buttonId number 0 top, 1 bottom, 2 toggle
 --- @param action number 0 release after hold, 1 press, 2 release after click
---- @param fromLink? boolean from one of the driver's own button links: not echoed to the proxy
-function MqttLight:buttonAction(buttonId, action, fromLink)
+function MqttLight:buttonAction(buttonId, action)
   buttonId, action = tonumber(buttonId), tonumber(action)
   if buttonId == nil or action == nil then
     return
   end
-  if not fromLink then
-    -- Echo so the proxy knows we track the button state
-    self:_notify("BUTTON_ACTION", { BUTTON_ID = buttonId, ACTION = action })
-  end
+  -- Echo so the proxy knows the button's state (and fires its button events)
+  self:_notify("BUTTON_ACTION", { BUTTON_ID = buttonId, ACTION = action })
 
   if action == ACTION_PRESS then
     self.press = { id = buttonId, holding = false }

@@ -382,18 +382,15 @@ on the device once with `Fade 1`.
 
 #### Button Links
 
-Colors for the LEDs of keypad buttons bound to the
-[On, Off and Toggle Button Links](#connections). Each link has two color
-pickers:
+The LED colors of keypad buttons bound to the
+[ON, OFF and Toggle Button Links](#connections) are set like on any Control4
+light: in the light's **Brightness** tab, under **Button and Button Connection
+Status LED Colors**, pick the button (**Top (Ramp Up)** for ON, **Bottom (Ramp
+Down)** for OFF, **Toggle**) and its **On Color** and **Off Color**. Keypads
+show the On Color while the light is on and the Off Color while it is off.
 
-- **On / Off / Toggle Button LED When Light On** - the LED color while the light
-  is on
-- **On / Off / Toggle Button LED When Light Off** - the LED color while the
-  light is off
-
-The defaults light the On and Toggle buttons blue while the light is on, and the
-Off button blue while it is off; black is unlit. A new color goes to the bound
-keypads at once.
+Until colors are chosen, ON and Toggle are blue while the light is on and OFF is
+blue while it is off. The colors are kept when the controller restarts.
 
 ## Example: Tasmota
 
@@ -509,9 +506,9 @@ or color temperature mode.
 
 - **MQTT Broker** - binds to the MQTT Broker driver automatically.
 - **Light** - the light_v2 proxy.
-- **On Button Link**, **Off Button Link**, **Toggle Button Link** - bind a
+- **ON Button Link**, **OFF Button Link**, **Toggle Button Link** - bind a
   keypad button here in the Connections tab. A tap turns the light on, off, or
-  toggles it; holding dims up (On), down (Off), or toward the other end
+  toggles it; holding dims up (ON), down (OFF), or toward the other end
   (Toggle), and releasing stops. The keypad LED follows the light in the colors
   from [Button Links](#button-links).
 
