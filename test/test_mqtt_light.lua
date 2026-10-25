@@ -436,6 +436,23 @@ for _, cap in ipairs({ "brightness_rate_min", "brightness_rate_max", "color_rate
   local value = tonumber(xml:match("<" .. cap .. ">(%-?%d+)</" .. cap .. ">"))
   T.check(cap .. " fits a 16-bit signed number", value ~= nil and value >= 0 and value <= 32767, tostring(value))
 end
+-- Composer takes missing ranges in DYNAMIC_CAPABILITIES_CHANGED as 0-0 and then
+-- refuses the 0.75 s default color rate on a plain dimmer.
+for _, cfg in ipairs({ {}, { color = true } }) do
+  local dyn = MqttLight.new({}):dynamicCapabilities()
+  if cfg.color then
+    local l = MqttLight.new({})
+    l:configure({ topics = { power = { commandTopic = "p" }, color = { commandTopic = "c" } } })
+    dyn = l:dynamicCapabilities()
+  end
+  for _, cap in ipairs({ "brightness_rate_min", "brightness_rate_max", "color_rate_min", "color_rate_max" }) do
+    T.eq(
+      (cfg.color and "color light: " or "switch: ") .. cap .. " matches driver.xml",
+      dyn[cap],
+      xml:match("<" .. cap .. ">(%-?%d+)</" .. cap .. ">")
+    )
+  end
+end
 for block in xml:gmatch("<property>(.-)</property>") do
   local name = block:match("<name>(.-)</name>")
   local default = block:match("<default>(.-)</default>") or ""

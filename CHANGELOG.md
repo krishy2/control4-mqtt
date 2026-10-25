@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102504 - 2026-10-25
+
+### Fixed
+
+- Fixed Composer Pro refusing the MQTT Light's default color rate ("Value of
+  '0.750' is not valid", with Minimum and Maximum 0). The light now sends its
+  brightness and color fade time range with every capability update, which
+  Composer otherwise reads as 0 to 0.
+
 ## v2026102503 - 2026-10-25
 
 ### Added

@@ -334,6 +334,11 @@ function MqttLight:describeCapabilities()
   return table.concat(parts, ", ")
 end
 
+--- Fade time range in ms. Composer reads these as 16-bit numbers, so the
+--- maximum must stay at 32767 (32.7 s); driver.xml declares the same.
+MqttLight.RATE_MIN = 0
+MqttLight.RATE_MAX = 32767
+
 --- light_v2 DYNAMIC_CAPABILITIES_CHANGED parameters for the current config.
 --- Color and CCT are always sent together, as the proxy docs require.
 --- @return table
@@ -347,6 +352,12 @@ function MqttLight:dynamicCapabilities()
     supports_color = boolStr(c.color),
     supports_color_correlated_temperature = boolStr(c.cct),
     color_rate_behavior = c.transition and "1" or "0",
+    -- Always sent: Composer reads missing ranges as 0-0 and then refuses the
+    -- proxy's default fade time (0.75 s), even on a light without color.
+    brightness_rate_min = tostring(MqttLight.RATE_MIN),
+    brightness_rate_max = tostring(MqttLight.RATE_MAX),
+    color_rate_min = tostring(MqttLight.RATE_MIN),
+    color_rate_max = tostring(MqttLight.RATE_MAX),
   }
   if c.cct then
     params.color_correlated_temperature_min = tostring(c.cctMin)
