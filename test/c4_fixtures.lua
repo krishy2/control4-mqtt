@@ -111,11 +111,22 @@ function F.captureTcpClient()
     function client:OnError()
       return self
     end
-    function client:Write(data)
-      table.insert(capture.writes, data)
+    function client:OnWrite(callback)
+      self._onWrite = callback
       return self
     end
-    function client:Close() end
+    function client:Write(data)
+      table.insert(capture.writes, data)
+      capture.unconfirmed = (capture.unconfirmed or 0) + 1
+      if capture.confirmWrites and self._onWrite then
+        self._onWrite(self)
+      end
+      return self
+    end
+    function client:Close()
+      capture.closedAfter = #capture.writes
+    end
+    capture.client = client
     function client:Connect()
       if self._onConnect then
         self._onConnect(self)

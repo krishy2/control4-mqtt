@@ -14,6 +14,9 @@ require("drivers-common-public.global.lib")
 local GitHubUpdater = {}
 GitHubUpdater.__index = GitHubUpdater
 
+--- How long the update socket stays open for writes that were not confirmed.
+local UPDATE_SOCKET_CLOSE_MS = 10000
+
 --- Default headers for all HTTP requests to GitHub.
 --- @type table<string, string>
 local DEFAULT_HEADERS = {
@@ -231,6 +234,7 @@ function GitHubUpdater:updateAll(repo, driverFilenames, includePrereleases, forc
         table.insert(updateOrder, ownFilenameToUpdate)
       end
 
+      local written, closed, closeWhenSent = 0, false, nil
       C4:CreateTCPClient()
         :OnConnect(function(client)
           for _, driverFilename in ipairs(updateOrder) do
@@ -252,8 +256,27 @@ function GitHubUpdater:updateAll(repo, driverFilenames, includePrereleases, forc
             ) .. "\0"
             client:Write(c4soap)
           end
-          client:Close()
+          -- Close only once everything is sent: closing right after the last
+          -- Write can drop it, and the last one is this driver's own update.
+          -- Every Write is confirmed by OnWrite; a timer closes it regardless.
+          closeWhenSent = function()
+            if not closed then
+              closed = true
+              client:Close()
+            end
+          end
+          if written >= #updateOrder then
+            closeWhenSent()
+          else
+            delay(UPDATE_SOCKET_CLOSE_MS):next(closeWhenSent)
+          end
           d:resolve(downloadedDriverFilenames)
+        end)
+        :OnWrite(function()
+          written = written + 1
+          if written >= #updateOrder and closeWhenSent then
+            closeWhenSent()
+          end
         end)
         :OnError(function(client, errCode, errMsg)
           client:Close()

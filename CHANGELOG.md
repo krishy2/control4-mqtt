@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102510 - 2026-10-25
+
+### Fixed
+
+- MQTT Broker: Update Drivers could leave the broker itself a version behind.
+  Its own update goes to the controller last, and the connection was closed
+  right after that last message, which could drop it. The connection now stays
+  open until every message is sent.
+
 ## v2026102509 - 2026-10-25
 
 ### Fixed
