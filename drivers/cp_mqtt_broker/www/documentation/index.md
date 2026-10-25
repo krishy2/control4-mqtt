@@ -61,6 +61,7 @@ The MQTT driver suite consists of three drivers:
   - [Driver Installation](#driver-installation)
   - [Built-in Broker Setup](#built-in-broker-setup)
   - [External Broker Setup](#external-broker-setup)
+  - [Shelly Setup](#shelly-setup)
   - [Driver Properties](#driver-properties)
   - [Driver Actions](#driver-actions)
   - [Programming](#programming)
@@ -83,6 +84,8 @@ The MQTT driver suite consists of three drivers:
   reconnection
 - **Tasmota discovery**: finds Tasmota devices so the MQTT Light driver can set
   itself up from a list
+- **Shelly discovery**: finds Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) and
+  their dimmer, CCT, RGB, RGBW and relay outputs, for the same list
 - Manages subscriptions for connected child drivers
 - Message caching for late-subscribing devices
 - Automatic updates of all MQTT drivers from GitHub
@@ -130,6 +133,37 @@ uses 3883 by default.
 The built-in broker is meant for a trusted home network: it does not check user
 names or passwords and does not encrypt. Use External mode with a broker of your
 own if you need those.
+
+## Shelly Setup
+
+Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) are found in both modes. In the
+Shelly's web page open **Settings → MQTT** and set:
+
+| Setting                            | Value                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| Enable                             | On                                                                       |
+| Server                             | Built-in: `<controller IP>:3883`; External: your broker's `host:port`    |
+| Client ID                          | Leave as it is (the device ID)                                           |
+| MQTT Prefix                        | Leave as it is (the device ID), or a custom prefix of one or two levels  |
+| User / Password                    | Empty in Built-in mode; your broker's account in External mode           |
+| SSL/TLS                            | No TLS                                                                   |
+| RPC over MQTT                      | On (the default): the light controls the device with it                  |
+| RPC status notifications over MQTT | On (the default): the light follows the device with them                 |
+| Generic status update over MQTT    | Optional, not needed                                                     |
+| Enable MQTT control                | On (the default): the broker asks devices to announce themselves with it |
+
+Save; the Shelly reconnects. Within a few seconds of connecting it appears in
+[Shelly Devices](#shelly-devices-read-only) and in the MQTT Light's Discovered
+Device list. Names come from the Shelly: its **Device name** and each output's
+name (**Channel name** or **Light name**), so name them on the Shelly first.
+
+How it works: when a Shelly publishes `<prefix>/online`, the driver sends
+`announce` to `<prefix>/command`; the Shelly answers on `<prefix>/announce`, and
+the driver reads its outputs with `Shelly.GetConfig` over RPC (answers on
+`control4/shelly/rpc`). The driver also asks all devices on `shellies/command`
+when it connects and every 15 minutes. In External mode a custom prefix with
+more than two levels is found only through that broadcast. Gen1 devices (Shelly
+1, 2.5, Dimmer 2, RGBW2, Bulb, Duo) are not supported.
 
 ## External Broker Setup
 
@@ -180,6 +214,11 @@ Sets the logging mode. Default is `Off`.
 `External` connects to an MQTT broker on the network. `Built-in` makes the
 controller the broker. Changing it restarts the MQTT connection; the other
 drivers reconnect on their own.
+
+#### Shelly Devices (read-only)
+
+How many Shelly Gen2+ devices the broker has found. See
+[Shelly Setup](#shelly-setup). The list is kept when the controller restarts.
 
 #### Tasmota Devices (read-only)
 
@@ -281,6 +320,22 @@ and relays with their `POWER` index, plus any settings to change on the device.
 
 Clears the list. Devices that are connected are found again the next time they
 connect (or restart them, or run `SetOption19 0` on them).
+
+### Print Shelly Devices
+
+Prints every Shelly found: name, topic prefix, model and its outputs with their
+component (`light:0`, `rgbw:0`, `switch:1`, ...).
+
+### Find Shelly Devices
+
+Asks every Shelly on the broker to announce itself and reads each configuration
+again, for example after renaming outputs on a Shelly. Run
+[Print Shelly Devices](#print-shelly-devices) a few seconds later.
+
+### Forget Shelly Devices
+
+Clears the Shelly list. Connected devices are found again when they next connect
+or with [Find Shelly Devices](#find-shelly-devices).
 
 ### Update Drivers
 

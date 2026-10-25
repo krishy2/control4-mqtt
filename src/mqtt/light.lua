@@ -26,6 +26,12 @@ MqttLight.__index = MqttLight
 
 MqttLight.MODE_TOPICS = "Separate Topics"
 MqttLight.MODE_JSON = "JSON"
+MqttLight.MODE_SHELLY = "Shelly (Gen2+)"
+
+--- Shelly component types and their RPC method prefixes.
+local SHELLY_METHODS = { light = "Light", cct = "CCT", rgb = "RGB", rgbw = "RGBW", switch = "Switch" }
+--- Shortest fade a Shelly is sent, in seconds.
+local SHELLY_MIN_TRANSITION = 0.5
 
 MqttLight.COLOR_FORMATS = {
   RGB = "RGB (r,g,b)",
@@ -193,6 +199,8 @@ function MqttLight:resetState()
     color = nil, -- { x, y }
     mode = nil, -- COLOR_MODE_*
   }
+  -- Shelly: the component status so far (NotifyStatus sends only what changed)
+  self.shellyStatus = {}
   -- What was last reported to the proxy
   self.level = nil
   self.color = nil -- { x, y, mode }
@@ -242,6 +250,28 @@ function MqttLight:isJsonMode()
   return self.cfg.mode == MqttLight.MODE_JSON
 end
 
+function MqttLight:isShellyMode()
+  return self.cfg.mode == MqttLight.MODE_SHELLY
+end
+
+--- Shelly settings: { prefix, key, kind, index, src } or nil when incomplete.
+function MqttLight:_shelly()
+  local sh = self.cfg.shelly or {}
+  local prefix = trim(sh.prefix)
+  local key = trim(sh.component)
+  local kind, index = key:match("^(%a+):(%d+)$")
+  if prefix == "" or kind == nil or SHELLY_METHODS[kind] == nil then
+    return nil
+  end
+  return {
+    prefix = prefix,
+    key = key,
+    kind = kind,
+    index = tonumber(index),
+    src = "control4/" .. prefix .. "/" .. key:gsub(":", "_"),
+  }
+end
+
 --- Does a feature have a topic (topics mode) or key (JSON mode)?
 --- @param feature string power|brightness|colorTemp|color|white|transition
 --- @return boolean has
@@ -284,6 +314,9 @@ end
 --- Compute capabilities from the configuration.
 --- @return table
 function MqttLight:computeCapabilities()
+  if self:isShellyMode() then
+    return self:_shellyCapabilities()
+  end
   local caps = {}
   caps.power = true
   caps.brightness = self:_has("brightness")
@@ -305,6 +338,34 @@ function MqttLight:computeCapabilities()
   end
   if caps.cctMin then
     -- light_v2 requires increments of 10 within 500-20000
+    caps.cctMin = Color.clamp(round(caps.cctMin / 10) * 10, 500, 20000)
+    caps.cctMax = Color.clamp(round(caps.cctMax / 10) * 10, 500, 20000)
+  end
+  return caps
+end
+
+--- Capabilities of a Shelly component, from its type.
+function MqttLight:_shellyCapabilities()
+  local sh = self:_shelly()
+  local kind = sh and sh.kind or "switch"
+  local caps = { power = true }
+  caps.brightness = kind ~= "switch"
+  caps.colorTemp = kind == "cct"
+  caps.color = kind == "rgb" or kind == "rgbw"
+  caps.white = kind == "rgbw"
+  caps.transition = kind ~= "switch"
+  caps.colorBrightness = false
+  caps.dimmer = caps.brightness
+  caps.cct = caps.colorTemp or caps.white
+  if caps.colorTemp then
+    local minK = tonumber(self.cfg.colorTempMin) or 2700
+    local maxK = tonumber(self.cfg.colorTempMax) or 6500
+    caps.cctMin, caps.cctMax = math.min(minK, maxK), math.max(minK, maxK)
+  elseif caps.white then
+    local k = tonumber(self.cfg.whiteColorTemp) or 4000
+    caps.cctMin, caps.cctMax = k, k
+  end
+  if caps.cctMin then
     caps.cctMin = Color.clamp(round(caps.cctMin / 10) * 10, 500, 20000)
     caps.cctMax = Color.clamp(round(caps.cctMax / 10) * 10, 500, 20000)
   end
@@ -376,7 +437,14 @@ function MqttLight:subscriptions()
       table.insert(list, trim(topic))
     end
   end
-  if self:isJsonMode() then
+  if self:isShellyMode() then
+    local sh = self:_shelly()
+    if sh then
+      add(sh.prefix .. "/status/" .. sh.key)
+      add(sh.prefix .. "/events/rpc")
+      add(sh.src .. "/rpc")
+    end
+  elseif self:isJsonMode() then
     add((self.cfg.json or {}).stateTopic)
   else
     for _, feature in ipairs({ "power", "brightness", "colorTemp", "color", "white" }) do
@@ -768,7 +836,16 @@ function MqttLight:onMessage(topic, payload)
   local u = {}
   local handled = false
 
-  if self:isJsonMode() then
+  if self:isShellyMode() then
+    local status = self:_shellyStatusFrom(topic, payload)
+    if status == false then
+      return false
+    end
+    if status ~= nil then
+      u = self:_shellyUpdate(status)
+    end
+    handled = true
+  elseif self:isJsonMode() then
     local json = self.cfg.json or {}
     if trim(json.stateTopic) ~= topic then
       return false
@@ -840,6 +917,157 @@ function MqttLight:onMessage(topic, payload)
   self:_applyUpdate(u)
   self:_syncFromDevice(false)
   return true
+end
+
+--- The component status in a Shelly message.
+--- @return table|nil|false status; nil: our topic but nothing for us; false: not our topic
+function MqttLight:_shellyStatusFrom(topic, payload)
+  local sh = self:_shelly()
+  if sh == nil then
+    return false
+  end
+  local statusTopic = sh.prefix .. "/status/" .. sh.key
+  local eventTopic = sh.prefix .. "/events/rpc"
+  local replyTopic = sh.src .. "/rpc"
+  if topic ~= statusTopic and topic ~= eventTopic and topic ~= replyTopic then
+    return false
+  end
+  local t = decodeJson(payload)
+  if t == nil then
+    return nil
+  end
+  local status
+  if topic == statusTopic then
+    status = t
+  elseif topic == eventTopic then
+    if t.method ~= "NotifyStatus" and t.method ~= "NotifyFullStatus" then
+      return nil
+    end
+    status = type(t.params) == "table" and t.params[sh.key] or nil
+  else
+    if t.error ~= nil then
+      log:warn("Shelly %s answered with an error: %s", sh.prefix, t.error)
+      return nil
+    end
+    status = t.result
+  end
+  if type(status) ~= "table" then
+    return nil
+  end
+  -- NotifyStatus carries only what changed: keep the rest.
+  for k, v in pairs(status) do
+    self.shellyStatus[k] = v
+  end
+  return self.shellyStatus
+end
+
+--- Turn a Shelly component status into a device update.
+function MqttLight:_shellyUpdate(st)
+  local u = {}
+  local kind = (self:_shelly() or {}).kind
+  if type(st.output) == "boolean" then
+    u.power = st.output
+  end
+  local bri = tonumber(st.brightness)
+  if kind == "cct" then
+    u.kelvin = tonumber(st.ct)
+    u.colorModeHint = MqttLight.COLOR_MODE_CCT
+  end
+  if (kind == "rgb" or kind == "rgbw") and type(st.rgb) == "table" then
+    local r, g, b = tonumber(st.rgb[1]) or 0, tonumber(st.rgb[2]) or 0, tonumber(st.rgb[3]) or 0
+    local white = tonumber(st.white) or 0
+    local x, y = Color.rgbToXy(r, g, b)
+    if kind == "rgbw" and x == nil and white > 0 then
+      -- Color off, white channel lit: white mode, dimmed with the white level
+      u.colorModeHint = MqttLight.COLOR_MODE_CCT
+      u.white = Color.clamp(white / 255 * 100, 0, 100)
+      bri = u.white
+    elseif x ~= nil then
+      u.color = { x = x, y = y }
+      u.colorModeHint = MqttLight.COLOR_MODE_FULL
+    end
+  end
+  if bri ~= nil and kind ~= "switch" then
+    u.brightness = Color.clamp(bri, 0, 100)
+  end
+  return u
+end
+
+--- Send a Shelly <Type>.Set over RPC.
+--- @param cmd table { power?, level?, color?, rate? }
+function MqttLight:_sendShelly(cmd)
+  local sh = self:_shelly()
+  if sh == nil then
+    log:warn("Shelly Topic Prefix and Shelly Component must be filled in")
+    return
+  end
+  local c = self.caps
+  local level = cmd.level
+  local turningOff = cmd.power == false or (level ~= nil and level <= 0)
+  local turningOn = cmd.power == true or (level ~= nil and level > 0)
+  local params = { id = sh.index }
+  local color = cmd.color
+
+  if turningOff then
+    params.on = false
+  else
+    if turningOn or color ~= nil then
+      params.on = true
+    end
+    local inWhite = sh.kind == "rgbw"
+      and (
+        (color and color.mode == MqttLight.COLOR_MODE_CCT)
+        or (color == nil and self.device.mode == MqttLight.COLOR_MODE_CCT)
+      )
+    if inWhite then
+      -- Dim with the white level and leave brightness at full, whichever of
+      -- the two the device applies to the white channel.
+      local lvl = (level ~= nil and level > 0) and level or self.level or 100
+      if lvl <= 0 then
+        lvl = 100
+      end
+      params.white = math.max(1, round(lvl * 255 / 100))
+      params.brightness = 100
+      if color ~= nil then
+        params.rgb = { 0, 0, 0 }
+      end
+    else
+      if level ~= nil and level > 0 and c.brightness then
+        params.brightness = math.max(1, round(level))
+      end
+      if color ~= nil then
+        if sh.kind == "cct" then
+          params.ct = round(Color.clamp(Color.xyToCct(color.x, color.y), c.cctMin or 1000, c.cctMax or 10000))
+        elseif c.color then
+          local r, g, b = Color.xyToRgb(color.x, color.y)
+          params.rgb = { r, g, b }
+          if sh.kind == "rgbw" then
+            params.white = 0
+          end
+        end
+      end
+    end
+  end
+  if c.transition and cmd.rate ~= nil then
+    params.transition_duration = math.max(SHELLY_MIN_TRANSITION, Color.roundTo(cmd.rate / 1000, 2))
+  end
+  if
+    params.on == nil
+    and params.brightness == nil
+    and params.rgb == nil
+    and params.ct == nil
+    and params.white == nil
+  then
+    return
+  end
+  if sh.kind == "switch" then
+    params = { id = sh.index, on = params.on ~= false }
+  end
+  self.rpcId = (self.rpcId or 0) % 1000000 + 1
+  self:_publish(
+    sh.prefix .. "/rpc",
+    JSON:encode({ id = self.rpcId, src = sh.src, method = SHELLY_METHODS[sh.kind] .. ".Set", params = params })
+  )
 end
 
 -------------------------------------------------------------------------------
@@ -954,6 +1182,10 @@ function MqttLight:_send(cmd)
     or (self.level ~= nil and self.level > 0 and self.level)
     or 100
   local color = cmd.color
+
+  if self:isShellyMode() then
+    return self:_sendShelly(cmd)
+  end
 
   if self:isJsonMode() then
     local json = self.cfg.json or {}

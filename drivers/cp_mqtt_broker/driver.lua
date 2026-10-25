@@ -25,6 +25,7 @@ local persist = require("lib.persist")
 local githubUpdater = require("lib.github-updater")
 local AutoBind = require("mqtt.autobind")
 local Tasmota = require("mqtt.tasmota")
+local Shelly = require("mqtt.shelly")
 local Broker = require("mqtt.server.broker")
 local C4Server = require("mqtt.server.c4_server")
 
@@ -52,6 +53,18 @@ local MQTT_BROKER_BINDING = 5001
 -- Tasmota devices seen through discovery: MAC -> device (see mqtt.tasmota)
 local TASMOTA_PERSIST_KEY = "TasmotaDevices"
 local tasmotaDevices = {}
+local SHELLY_PERSIST_KEY = "ShellyDevices"
+--- Shelly Gen2+ devices by MAC
+local shellyDevices = {}
+--- Shelly.GetConfig requests waiting for an answer, by device ID
+local shellyPending = {}
+--- When each device's configuration was last read (ms), by MAC; not persisted
+local shellyFetched = {}
+local shellyRpcId = 0
+--- A device's configuration is read again after this long, or when it changes.
+local SHELLY_REFRESH_MS = 60 * 60 * 1000
+--- Defined in the Shelly discovery section; used when the broker connects.
+local findShellies
 
 local EXTERNAL_PROPERTIES = { "Broker Settings", "Broker Address", "Port", "Username", "Password", "Keep Alive" }
 local BUILTIN_PROPERTIES = {
@@ -120,6 +133,10 @@ local function setConnected(connected)
   if connected then
     C4:FireEvent("Broker Connected")
     notifyChildDrivers("BROKER_CONNECTED", {})
+    -- Shellies already connected announce themselves; the rest do when they connect.
+    SetTimer("FindShellies", 2 * ONE_SECOND, function()
+      findShellies()
+    end)
   else
     C4:FireEvent("Broker Disconnected")
     notifyChildDrivers("BROKER_DISCONNECTED", {})
@@ -232,6 +249,134 @@ local function handleDiscovery(topic, payload)
 end
 
 -----------------------------------------------------------------------
+-- Shelly discovery (Gen2+)
+-----------------------------------------------------------------------
+
+local function shellyCount()
+  local n = 0
+  for _ in pairs(shellyDevices) do
+    n = n + 1
+  end
+  return n
+end
+
+local function updateShellyProperty()
+  UpdateProperty("Shelly Devices", tostring(shellyCount()))
+end
+
+--- Publish a message from this driver, in either mode.
+--- @return boolean sent
+local function publishOwn(topic, payload)
+  if isBuiltIn() then
+    return builtin.broker ~= nil and MQTT_CONNECTED and builtin.broker:publish(topic, payload, false) and true or false
+  end
+  if MQTT_CONNECTED and MQTT then
+    return MQTT:Publish(topic, payload, 0, false) == 0
+  end
+  return false
+end
+
+--- Ask every Shelly on the broker to announce itself.
+findShellies = function()
+  if publishOwn(Shelly.BROADCAST_TOPIC, "announce") then
+    log:debug("Asked Shelly devices to announce themselves")
+  end
+end
+
+--- A Gen2+ device announced itself: read its configuration unless it is fresh.
+local function onShellyAnnounce(prefix, info)
+  local known = shellyDevices[info.mac]
+  local fetched = shellyFetched[info.mac]
+  if
+    known ~= nil
+    and known.topic == prefix
+    and known.version == info.ver
+    and fetched ~= nil
+    and C4:GetTime() - fetched < SHELLY_REFRESH_MS
+  then
+    return
+  end
+  shellyRpcId = shellyRpcId % 1000000 + 1
+  shellyPending[info.id] = { info = info, prefix = prefix, rpcId = shellyRpcId }
+  log:debug("Reading the configuration of Shelly %s (%s)", info.id, prefix)
+  publishOwn(prefix .. "/rpc", Shelly.configRequest(shellyRpcId))
+end
+
+--- A device answered Shelly.GetConfig.
+local function onShellyReply(payload)
+  local reply = Shelly.parseReply(payload)
+  if reply == nil then
+    return
+  end
+  local pending = shellyPending[reply.src]
+  if pending == nil then
+    return
+  end
+  shellyPending[reply.src] = nil
+  if reply.error ~= nil or type(reply.result) ~= "table" then
+    log:warn("Shelly %s did not return its configuration: %s", reply.src, reply.error)
+    return
+  end
+  local dev = Shelly.build(pending.info, pending.prefix, reply.result)
+  local mac = dev.mac
+  shellyFetched[mac] = C4:GetTime()
+  local old = shellyDevices[mac]
+  if sameValue(old, dev) then
+    return
+  end
+  log:info(
+    "Shelly %s (%s, %s) %s: %d outputs",
+    dev.name,
+    dev.topic,
+    dev.model,
+    old and "changed" or "discovered",
+    #dev.components
+  )
+  shellyDevices[mac] = dev
+  persist:defer(function()
+    persist:set(SHELLY_PERSIST_KEY, shellyDevices)
+  end)
+  updateShellyProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", { mac = mac })
+end
+
+--- Handle a message if it belongs to Shelly discovery.
+--- @return boolean handled true for discovery topics
+local function handleShelly(topic, payload)
+  local ok, handled = pcall(function()
+    if topic == Shelly.DISCOVERY_REPLY_TOPIC then
+      onShellyReply(payload)
+      return true
+    end
+    local prefix = Shelly.prefixFrom(topic, "announce")
+    if prefix ~= nil then
+      local info = Shelly.parseAnnounce(payload)
+      if info ~= nil then
+        onShellyAnnounce(prefix, info)
+      end
+      return true
+    end
+    prefix = Shelly.prefixFrom(topic, "online")
+    if prefix ~= nil then
+      -- A Shelly connected: ask it (and only it) to announce itself.
+      -- It subscribes to its command topics just after saying so: wait a moment.
+      if payload == "true" then
+        SetTimer("ShellyAnnounce " .. prefix, 3 * ONE_SECOND, function()
+          publishOwn(prefix .. "/command", "announce")
+        end)
+      end
+      return true
+    end
+    return false
+  end)
+  if not ok then
+    log:error("Shelly discovery from %s failed: %s", topic, handled)
+    return true
+  end
+  return handled
+end
+
+-----------------------------------------------------------------------
 -- Built-in mode
 -----------------------------------------------------------------------
 
@@ -271,6 +416,7 @@ local function ensureBuiltIn()
     onPublish = function(topic, payload, _retain, clientId)
       log:trace("Built-in broker: %s -> %s", tostring(clientId or "driver"), topic)
       handleDiscovery(topic, payload)
+      handleShelly(topic, payload)
       local devices = subscriptions[topic]
       if IsEmpty(devices) then
         return
@@ -387,6 +533,10 @@ local function connectExternal()
       end
       -- Tasmota discovery (retained, so the broker sends what it has)
       MQTT:Subscribe(Tasmota.DISCOVERY_FILTER)
+      -- Shelly discovery: announces, online messages and RPC answers
+      for _, filter in ipairs(Shelly.EXTERNAL_FILTERS) do
+        MQTT:Subscribe(filter)
+      end
 
       -- Notify child drivers
       setConnected(true)
@@ -431,7 +581,9 @@ local function connectExternal()
 
   MQTT:OnMessage(function(obj, msgId, topic, payload, qos, retain)
     log:debug("MQTT:OnMessage msgId=%s topic=%s payload=%s qos=%s retain=%s", msgId, topic, payload, qos, retain)
-    if handleDiscovery(topic, payload) and IsEmpty(subscriptions[topic]) then
+    local discovery = handleDiscovery(topic, payload)
+    discovery = handleShelly(topic, payload) or discovery
+    if discovery and IsEmpty(subscriptions[topic]) then
       return
     end
     -- Cache the last message for new subscribers
@@ -511,6 +663,8 @@ function OnDriverInit()
   log:trace("OnDriverInit()")
   persist:setWriteBehind(TASMOTA_PERSIST_KEY, 10 * ONE_SECOND)
   tasmotaDevices = persist:get(TASMOTA_PERSIST_KEY, {}) or {}
+  persist:setWriteBehind(SHELLY_PERSIST_KEY, 10 * ONE_SECOND)
+  shellyDevices = persist:get(SHELLY_PERSIST_KEY, {}) or {}
 end
 
 function OnDriverLateInit()
@@ -540,7 +694,12 @@ function OnDriverLateInit()
   gInitialized = true
   updateModeVisibility()
   updateTasmotaProperty()
+  updateShellyProperty()
   Connect()
+  -- Catch devices whose online message was missed (e.g. deeper topic prefixes).
+  SetTimer("FindShelliesPeriodic", 15 * ONE_MINUTE, function()
+    findShellies()
+  end, true)
 
   -- After an update: say whether every driver got the new version, once the
   -- other drivers have had time to restart.
@@ -556,6 +715,7 @@ function OnDriverLateInit()
 end
 
 function OnDriverDestroyed()
+  CancelTimer("FindShelliesPeriodic")
   persist:flush()
   stopBuiltIn("driver removed")
   stopExternal()
@@ -847,6 +1007,11 @@ function RFP.GET_TASMOTA_DEVICES(idBinding, strCommand, tParams, args)
   for _, dev in pairs(tasmotaDevices) do
     list[#list + 1] = Tasmota.summary(dev)
   end
+  for _, dev in pairs(shellyDevices) do
+    if #(dev.components or {}) > 0 then
+      list[#list + 1] = Shelly.summary(dev)
+    end
+  end
   table.sort(list, function(a, b)
     return a.name:lower() .. a.topic < b.name:lower() .. b.topic
   end)
@@ -861,7 +1026,7 @@ function RFP.GET_TASMOTA_DEVICE(idBinding, strCommand, tParams, args)
     log:warn("GET_TASMOTA_DEVICE needs device_id and mac")
     return
   end
-  local dev = tasmotaDevices[mac]
+  local dev = tasmotaDevices[mac] or shellyDevices[mac]
   SendToDevice(deviceId, "TASMOTA_DEVICE", { mac = mac, device = dev and JSON:encode(dev) or "" })
 end
 
@@ -904,6 +1069,49 @@ function EC.ForgetTasmotaDevices()
   updateTasmotaProperty()
   notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
   log:print("Forgot all Tasmota devices; connected devices are listed again when they next connect")
+end
+
+function EC.PrintShellyDevices()
+  local list = {}
+  for _, dev in pairs(shellyDevices) do
+    list[#list + 1] = dev
+  end
+  table.sort(list, function(a, b)
+    return a.name:lower() < b.name:lower()
+  end)
+  local lines = { string.format("==== %d Shelly devices ====", #list) }
+  for _, dev in ipairs(list) do
+    local loads = {}
+    for _, l in ipairs(Shelly.loads(dev)) do
+      loads[#loads + 1] = l.label .. " (" .. l.id .. ")"
+    end
+    lines[#lines + 1] = string.format(
+      "%-24s %-32s %-14s %s",
+      dev.name:sub(1, 24),
+      dev.topic:sub(1, 32),
+      (dev.model or ""):sub(1, 14),
+      IsEmpty(loads) and "no light or relay outputs" or table.concat(loads, ", ")
+    )
+  end
+  print(table.concat(lines, "\n"))
+end
+
+function EC.FindShellyDevices()
+  shellyFetched = {}
+  if publishOwn(Shelly.BROADCAST_TOPIC, "announce") then
+    log:print("Asked every Shelly to announce itself; run Print Shelly Devices in a few seconds")
+  else
+    log:print("Not connected to a broker; Shelly devices cannot be asked now")
+  end
+end
+
+function EC.ForgetShellyDevices()
+  shellyDevices = {}
+  shellyFetched = {}
+  persist:set(SHELLY_PERSIST_KEY, nil)
+  updateShellyProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
+  log:print("Forgot all Shelly devices; connected ones are listed again when they next announce")
 end
 
 -- Action: Reconnect (External) / Restart (Built-in)

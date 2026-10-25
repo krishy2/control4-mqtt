@@ -21,6 +21,7 @@ local AutoBind = require("mqtt.autobind")
 local MqttDevice = require("mqtt.entities.device")
 local MqttLight = require("mqtt.light")
 local Tasmota = require("mqtt.tasmota")
+local Shelly = require("mqtt.shelly")
 
 -- Binding IDs
 local LIGHT_PROXY_BINDING = 5001
@@ -30,8 +31,8 @@ local SETTINGS_PERSIST_KEY = "LightSettings"
 local TASMOTA_PERSIST_KEY = "TasmotaSelection"
 local MANUAL = "(Manual)"
 
--- Tasmota device choice. Declared here because start-up uses them; they are
--- filled in by the Tasmota discovery section further down.
+-- Discovered device (Tasmota or Shelly) choice. Declared here because start-up
+-- uses them; they are filled in by the discovery section further down.
 --- Dropdown label -> { mac, load }
 local tasmotaChoices = {}
 --- The chosen device and output, kept across restarts: { mac, load, label }
@@ -85,6 +86,8 @@ local CONFIG_PROPERTIES = {
   "Transition Command Topic",
   "Transition Key",
   "Transition Unit",
+  "Shelly Topic Prefix",
+  "Shelly Component",
 }
 
 --- @type table
@@ -137,6 +140,7 @@ local function buildConfig()
     whiteMax = tonumber(prop("White Scale Max")) or 100,
     whiteColorTemp = tonumber(prop("White Color Temp")) or 4000,
     transitionUnit = prop("Transition Unit"),
+    shelly = { prefix = prop("Shelly Topic Prefix"), component = prop("Shelly Component") },
     topics = {
       power = feature("Power"),
       brightness = feature("Brightness"),
@@ -165,8 +169,10 @@ end
 local function updatePropertyVisibility()
   local cfg = light.cfg
   local caps = light.caps
+  local shelly = light:isShellyMode()
   local json = light:isJsonMode()
-  local topics = not json
+  local topics = not json and not shelly
+  local generic = not shelly
   local t = cfg.topics or {}
   local function filled(feature, which)
     return not IsEmpty((t[feature] or {})[which])
@@ -182,38 +188,40 @@ local function updatePropertyVisibility()
     ["Power Value Path"] = topics and filled("power", "stateTopic"),
     ["Power Command Topic"] = topics,
     ["State Key"] = json,
-    ["State On"] = json or filled("power", "stateTopic"),
-    ["State Off"] = json or filled("power", "stateTopic"),
-    ["Payload On"] = json or filled("power", "commandTopic"),
-    ["Payload Off"] = json or filled("power", "commandTopic"),
+    ["State On"] = json or (topics and filled("power", "stateTopic")),
+    ["State Off"] = json or (topics and filled("power", "stateTopic")),
+    ["Payload On"] = json or (topics and filled("power", "commandTopic")),
+    ["Payload Off"] = json or (topics and filled("power", "commandTopic")),
     ["Brightness State Topic"] = topics,
     ["Brightness Value Path"] = topics and filled("brightness", "stateTopic"),
     ["Brightness Command Topic"] = topics,
     ["Brightness Key"] = json,
-    ["Brightness Scale Max"] = caps.brightness,
+    ["Brightness Scale Max"] = generic and caps.brightness,
     ["Color Temp State Topic"] = topics,
     ["Color Temp Value Path"] = topics and filled("colorTemp", "stateTopic"),
     ["Color Temp Command Topic"] = topics,
     ["Color Temp Key"] = json,
-    ["Color Temp Unit"] = caps.colorTemp,
+    ["Color Temp Unit"] = generic and caps.colorTemp,
     ["Color Temp Min"] = caps.colorTemp,
     ["Color Temp Max"] = caps.colorTemp,
     ["Color State Topic"] = topics,
     ["Color Value Path"] = topics and filled("color", "stateTopic"),
     ["Color Command Topic"] = topics,
     ["Color Key"] = json,
-    ["Color Format"] = topics and caps.color,
+    ["Color Format"] = topics and caps.color == true,
     ["JSON Color Format"] = json and caps.color,
     ["Color Includes Brightness"] = topics and caps.color and rgbFormat,
     ["White State Topic"] = topics,
     ["White Value Path"] = topics and filled("white", "stateTopic"),
     ["White Command Topic"] = topics,
     ["White Key"] = json,
-    ["White Scale Max"] = caps.white,
+    ["White Scale Max"] = generic and caps.white,
     ["White Color Temp"] = caps.white and not caps.colorTemp,
     ["Transition Command Topic"] = topics,
     ["Transition Key"] = json,
-    ["Transition Unit"] = caps.transition,
+    ["Transition Unit"] = generic and caps.transition,
+    ["Shelly Topic Prefix"] = shelly,
+    ["Shelly Component"] = shelly,
   }
   for name, visible in pairs(rules) do
     C4:SetPropertyAttribs(name, visible and constants.SHOW_PROPERTY or constants.HIDE_PROPERTY)
@@ -523,7 +531,7 @@ for _, name in ipairs(CONFIG_PROPERTIES) do
 end
 
 -----------------------------------------------------------------------
--- Tasmota discovery: pick a device, every setting follows
+-- Discovery (Tasmota and Shelly): pick a device, every setting follows
 -----------------------------------------------------------------------
 
 local function deviceId()
@@ -539,11 +547,11 @@ local function requestTasmotaDevice(mac)
 end
 
 setTasmotaNotes = function(text)
-  UpdateProperty("Tasmota Notes", text or "")
-  C4:SetPropertyAttribs("Tasmota Notes", IsEmpty(text) and constants.HIDE_PROPERTY or constants.SHOW_PROPERTY)
+  UpdateProperty("Device Notes", text or "")
+  C4:SetPropertyAttribs("Device Notes", IsEmpty(text) and constants.HIDE_PROPERTY or constants.SHOW_PROPERTY)
 end
 
---- Rebuild the Tasmota Device dropdown.
+--- Rebuild the Discovered Device dropdown.
 updateTasmotaList = function()
   local labels = {}
   for label in pairs(tasmotaChoices) do
@@ -561,15 +569,24 @@ updateTasmotaList = function()
     end
   end
   table.insert(labels, 1, MANUAL)
-  C4:UpdatePropertyList("Tasmota Device", table.concat(labels, ","), current)
+  C4:UpdatePropertyList("Discovered Device", table.concat(labels, ","), current)
 end
 
 --- Fill in every setting for the chosen device and output.
---- Rename the light (as Composer and Navigator show it) after a Tasmota output.
---- @param dev table parsed device (mqtt.tasmota)
+--- The codec for a discovered device.
+local function moduleFor(dev)
+  return dev.type == "shelly" and Shelly or Tasmota
+end
+
+local function kindName(dev)
+  return dev.type == "shelly" and "Shelly" or "Tasmota"
+end
+
+--- Rename the light (as Composer and Navigator show it) after a discovered output.
+--- @param dev table parsed device (mqtt.tasmota or mqtt.shelly)
 --- @param loadId string
 local function renameAfterTasmota(dev, loadId)
-  local name = Tasmota.loadName(dev, loadId)
+  local name = moduleFor(dev).loadName(dev, loadId)
   if IsEmpty(name) then
     return
   end
@@ -601,7 +618,7 @@ local function renameAfterTasmota(dev, loadId)
     end
   end
   log:setLogName(name)
-  log:print("Renamed the light to '%s' after Tasmota device %s", name, dev.topic)
+  log:print("Renamed the light to '%s' after %s device %s", name, kindName(dev), dev.topic)
 end
 
 --- @param dev table parsed device (mqtt.tasmota)
@@ -610,14 +627,15 @@ local function applyTasmotaDevice(dev)
   if selection == nil then
     return
   end
-  local props, err = Tasmota.lightProperties(dev, selection.load)
+  local codec = moduleFor(dev)
+  local props, err = codec.lightProperties(dev, selection.load)
   if props == nil then
     setTasmotaNotes("This output no longer exists on " .. dev.topic .. " (" .. tostring(err) .. ")")
     return
   end
   -- A Tasmota fade topic (cmnd/<topic>/Speed) follows the device; anything else stays.
   local transition = Properties["Transition Command Topic"] or ""
-  if transition:match("/Speed$") then
+  if dev.type ~= "shelly" and transition:match("/Speed$") then
     props["Transition Command Topic"] = Tasmota.topicFor(dev, 1, "Speed")
   end
 
@@ -630,8 +648,8 @@ local function applyTasmotaDevice(dev)
     end
   end
   table.sort(changed)
-  log:info("Applied Tasmota device %s (%s): %d settings changed", dev.topic, selection.load, #changed)
-  setTasmotaNotes(table.concat(Tasmota.notes(dev), " "))
+  log:info("Applied %s device %s (%s): %d settings changed", kindName(dev), dev.topic, selection.load, #changed)
+  setTasmotaNotes(table.concat(codec.notes(dev), " "))
 
   if renamePending and renamePending.mac == selection.mac and renamePending.load == selection.load then
     renamePending = nil
@@ -645,17 +663,17 @@ local function applyTasmotaDevice(dev)
   OnPropertyChanged("Availability Topic")
   OnPropertyChanged("Availability Value Path")
   applyConfig(false)
-  requestState("Tasmota device applied")
+  requestState("discovered device applied")
 end
 
-function OPC.Tasmota_Device(propertyValue)
-  log:trace("OPC.Tasmota_Device('%s')", propertyValue)
+function OPC.Discovered_Device(propertyValue)
+  log:trace("OPC.Discovered_Device('%s')", propertyValue)
   if not gInitialized then
     return
   end
   if IsEmpty(propertyValue) or propertyValue == MANUAL then
     if tasmotaSelection ~= nil then
-      log:info("Tasmota device cleared; settings stay as they are")
+      log:info("Discovered device cleared; settings stay as they are")
     end
     tasmotaSelection = nil
     persist:set(TASMOTA_PERSIST_KEY, nil)
@@ -677,12 +695,12 @@ function OPC.Tasmota_Device(propertyValue)
   requestTasmotaDevice(choice.mac)
 end
 
---- The broker's list of Tasmota devices.
+--- The broker's list of discovered devices (Tasmota and Shelly).
 function EC.TASMOTA_DEVICES(tParams)
   log:trace("EC.TASMOTA_DEVICES()")
   local ok, list = pcall(JSON.decode, JSON, Select(tParams, "devices") or "[]")
   if not ok or type(list) ~= "table" then
-    log:warn("Could not read the Tasmota device list")
+    log:warn("Could not read the discovered device list")
     return
   end
   tasmotaChoices = {}
@@ -717,7 +735,7 @@ function EC.TASMOTA_DEVICE(tParams)
   end
   local ok, dev = pcall(JSON.decode, JSON, payload)
   if not ok or type(dev) ~= "table" then
-    log:warn("Could not read Tasmota device %s", mac)
+    log:warn("Could not read discovered device %s", mac)
     return
   end
   applyTasmotaDevice(dev)

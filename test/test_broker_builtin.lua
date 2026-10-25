@@ -397,6 +397,141 @@ end)
 T.contains("Print Tasmota Devices", printed, "RGBCCT light (POWER)")
 
 -------------------------------------------------------------------------------
+T.section("Shelly discovery (built-in)")
+-------------------------------------------------------------------------------
+local SP = "shellyplusrgbwpm-a0a3b3c4d5e6"
+local function shellyInfo(prefixId, name)
+  return JSON:encode({
+    name = name,
+    id = prefixId,
+    mac = "A0A3B3C4D5E6",
+    slot = 0,
+    model = "SNDC-0D4P10WW",
+    gen = 2,
+    fw_id = "20241011-114455/1.4.4-g6d2a586",
+    ver = "1.4.4",
+    app = "PlusRGBWPM",
+    auth_en = false,
+    profile = "rgbw",
+  })
+end
+local function topicsOf(packets)
+  local out = {}
+  for _, p in ipairs(packets) do
+    out[#out + 1] = p.topic .. "=" .. p.payload
+  end
+  return out
+end
+local function find(packets, topic)
+  for _, p in ipairs(packets) do
+    if p.topic == topic then
+      return p
+    end
+  end
+  return nil
+end
+
+local shellyDev = accept(last(servers), "20")
+shellyDev:feed(Codec.connect({
+  clientId = SP,
+  keepAlive = 60,
+  will = { topic = SP .. "/online", payload = "false" },
+}))
+-- As a Shelly does: online first, then its subscriptions
+shellyDev:feed(Codec.publish(SP .. "/online", "true", { retain = true }))
+shellyDev:feed(Codec.subscribe(1, {
+  { SP .. "/rpc", 0 },
+  { SP .. "/command", 0 },
+  { SP .. "/command/#", 0 },
+  { "shellies/command", 0 },
+}))
+shellyDev:take()
+T.capture(function()
+  ShimFireTimers()
+end)
+local announceAsk = find(shellyDev:take(), SP .. "/command")
+T.eq("online: the device is asked to announce itself", announceAsk and announceAsk.payload, "announce")
+
+shellyDev:feed(Codec.publish("shellies/announce", shellyInfo(SP, "Living RGBW")))
+T.eq("the shared announce topic gives no prefix: nothing asked", #shellyDev:take(), 0)
+shellyDev:feed(Codec.publish(SP .. "/announce", shellyInfo(SP, "Living RGBW")))
+local ask = find(shellyDev:take(), SP .. "/rpc")
+local askBody = ask and JSON:decode(ask.payload) or {}
+T.eq("its configuration is asked for over RPC", { askBody.method, askBody.src }, {
+  "Shelly.GetConfig",
+  "control4/shelly",
+})
+
+proxyMsgs = {}
+shellyDev:feed(Codec.publish(
+  "control4/shelly/rpc",
+  JSON:encode({
+    id = askBody.id,
+    src = SP,
+    dst = "control4/shelly",
+    result = {
+      sys = { device = { name = "Living RGBW", mac = "A0A3B3C4D5E6" } },
+      ["rgbw:0"] = { id = 0, name = JSON.null },
+      ["input:0"] = { id = 0, name = JSON.null, type = "button" },
+      mqtt = { enable = true, server = "10.0.0.2:3883" },
+    },
+  })
+))
+T.eq("Shelly Devices property counts it", propertyWrites["Shelly Devices"], "1")
+T.eq("children hear about it", notifies("TASMOTA_DEVICES_CHANGED"), 1)
+
+shellyDev:feed(Codec.publish(SP .. "/announce", shellyInfo(SP, "Living RGBW")))
+T.eq("announced again soon after: not asked again", find(shellyDev:take(), SP .. "/rpc"), nil)
+
+shellyDev:feed(
+  Codec.publish(
+    "shellies/announce",
+    '{"id":"shellydimmer2-E8DB84D4A1B2","model":"SHDM-2","mac":"E8DB84D4A1B2","ip":"10.0.0.9","new_fw":false,"fw_ver":"x"}'
+  )
+)
+shellyDev:feed(
+  Codec.publish(
+    "shellies/shellydimmer2-E8DB84D4A1B2/announce",
+    '{"id":"shellydimmer2-E8DB84D4A1B2","model":"SHDM-2","mac":"E8DB84D4A1B2","ip":"10.0.0.9","new_fw":false,"fw_ver":"x"}'
+  )
+)
+T.eq("a Gen1 announce is ignored", propertyWrites["Shelly Devices"], "1")
+
+shellyDev:feed(Codec.publish("control4/shelly/rpc", '{"id":5,"src":"stranger","result":{}}'))
+T.eq("an answer nobody asked for is ignored", propertyWrites["Shelly Devices"], "1")
+
+deviceMsgs = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICES", { device_id = "101" })
+end)
+local merged = JSON:decode(last(deviceMsgs).params.devices)
+local shellyEntry
+for _, d in ipairs(merged) do
+  if d.type == "shelly" then
+    shellyEntry = d
+  end
+end
+T.eq("the light's list has the Shelly too", shellyEntry and shellyEntry.name, "Living RGBW")
+T.eq("with its output", shellyEntry and shellyEntry.loads[1].id, "rgbw:0")
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICE", { device_id = "101", mac = "A0A3B3C4D5E6" })
+end)
+local full = JSON:decode(last(deviceMsgs).params.device)
+T.eq("and in full on request", { full.type, full.topic }, { "shelly", SP })
+
+local _, _, shellyPrinted = T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "PrintShellyDevices" })
+end)
+T.contains("Print Shelly Devices", shellyPrinted, "RGBW light (rgbw:0)")
+T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "FindShellyDevices" })
+end)
+local broadcast = find(shellyDev:take(), "shellies/command")
+T.eq("Find Shelly Devices asks every device", broadcast and broadcast.payload, "announce")
+shellyDev:feed(Codec.publish(SP .. "/announce", shellyInfo(SP, "Living RGBW")))
+T.check("and reads each configuration again", find(shellyDev:take(), SP .. "/rpc") ~= nil)
+
+-------------------------------------------------------------------------------
 T.section("Back to External")
 -------------------------------------------------------------------------------
 local srvBuiltIn = last(servers)
@@ -443,6 +578,45 @@ end)
 T.eq("an external discovery message is collected", propertyWrites["Tasmota Devices"], "2")
 T.eq("children hear about it", notifies("TASMOTA_DEVICES_CHANGED"), 1)
 T.eq("discovery is not routed to drivers that did not subscribe", #deviceMsgs, 0)
+
+local subscribedShelly = {}
+for _, call in ipairs(client.calls) do
+  if call[1] == "Subscribe" then
+    subscribedShelly[call[2]] = true
+  end
+end
+T.check("subscribes to Shelly announces", subscribedShelly["+/announce"] and subscribedShelly["+/+/announce"])
+T.check("and to Shelly RPC answers", subscribedShelly["control4/shelly/rpc"])
+client.calls = {}
+deviceMsgs = {}
+T.capture(function()
+  client.callbacks.OnMessage(
+    client,
+    2,
+    "shellypro1-30c6f7aabbcc/announce",
+    JSON:encode({
+      id = "shellypro1-30c6f7aabbcc",
+      mac = "30C6F7AABBCC",
+      model = "SPSW-201XE16EU",
+      gen = 2,
+      ver = "1.4.4",
+      app = "Pro1",
+    }),
+    0,
+    false
+  )
+end)
+local rpcCall
+for _, call in ipairs(client.calls) do
+  if call[1] == "Publish" and call[2] == "shellypro1-30c6f7aabbcc/rpc" then
+    rpcCall = call
+  end
+end
+T.check(
+  "an external announce leads to Shelly.GetConfig",
+  rpcCall ~= nil and rpcCall[3]:find("Shelly.GetConfig", 1, true)
+)
+T.eq("announces are not routed to drivers", #deviceMsgs, 0)
 
 T.capture(function()
   ExecuteCommand("LUA_ACTION", { ACTION = "ForgetTasmotaDevices" })

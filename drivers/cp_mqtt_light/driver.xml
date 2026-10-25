@@ -169,16 +169,16 @@
         <description>Current state as reported to Control4</description>
       </property>
       <property>
-        <name>Tasmota Device</name>
+        <name>Discovered Device</name>
         <type>DYNAMIC_LIST</type>
-        <description>Pick a Tasmota light or relay found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+        <description>Pick a Tasmota or Shelly light or relay found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
       </property>
       <property>
-        <name>Tasmota Notes</name>
+        <name>Device Notes</name>
         <type>STRING</type>
         <default/>
         <readonly>true</readonly>
-        <description>Settings on the Tasmota device that should change for this light to work well</description>
+        <description>Settings on the discovered device that should change for this light to work well</description>
       </property>
       <property>
         <name>Payload Mode</name>
@@ -187,8 +187,21 @@
         <items>
           <item>Separate Topics</item>
           <item>JSON</item>
+          <item>Shelly (Gen2+)</item>
         </items>
-        <description>Separate Topics: one topic per ability with plain values (Tasmota, ESPHome). JSON: one state topic and one command topic carrying a JSON object (Zigbee2MQTT, Home Assistant JSON schema).</description>
+        <description>Separate Topics: one topic per ability with plain values (Tasmota, ESPHome). JSON: one state topic and one command topic carrying a JSON object (Zigbee2MQTT, Home Assistant JSON schema). Shelly (Gen2+): a Plus, Pro, Gen3 or Gen4 output controlled over Shelly RPC.</description>
+      </property>
+      <property>
+        <name>Shelly Topic Prefix</name>
+        <type>STRING</type>
+        <default/>
+        <description>The Shelly's MQTT topic prefix (by default its device ID, e.g. shellyplus1pm-a8032ab12345)</description>
+      </property>
+      <property>
+        <name>Shelly Component</name>
+        <type>STRING</type>
+        <default/>
+        <description>The output: light:0, cct:0, rgb:0, rgbw:0 or switch:0 (the number is the output, from 0). The type decides the abilities.</description>
       </property>
       <property>
         <name>JSON State Topic</name>

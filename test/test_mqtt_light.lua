@@ -586,7 +586,7 @@ T.eq("no State Request Topic: nothing is sent", #published("cmnd/x/STATE"), 0)
 C4.GetTime = realGetTime
 
 -------------------------------------------------------------------------------
-T.section("Tasmota Device dropdown")
+T.section("Discovered Device dropdown: Tasmota")
 -------------------------------------------------------------------------------
 local Tasmota = require("mqtt.tasmota")
 local lists = {}
@@ -629,15 +629,15 @@ T.eq("broker connected: the device list is requested", #sentTo("GET_TASMOTA_DEVI
 T.capture(function()
   ExecuteCommand("TASMOTA_DEVICES", { devices = listPayload(kitchen) })
 end)
-local dl = lists["Tasmota Device"]
+local dl = lists["Discovered Device"]
 T.contains("the dropdown offers the light", dl and dl.items, "Kitchen [tasmota_kitchen] RGBCCT light")
 T.contains("and the relay", dl and dl.items, "Kitchen [tasmota_kitchen] Relay 1")
 T.eq("(Manual) stays selected", dl and dl.current, "(Manual)")
 
 reset()
-Properties["Tasmota Device"] = "Kitchen [tasmota_kitchen] RGBCCT light"
+Properties["Discovered Device"] = "Kitchen [tasmota_kitchen] RGBCCT light"
 T.capture(function()
-  OnPropertyChanged("Tasmota Device")
+  OnPropertyChanged("Discovered Device")
 end)
 local req = sentTo("GET_TASMOTA_DEVICE")[1]
 T.eq("choosing it asks for the device", req and req.mac, "84F3EBA1B2C3")
@@ -697,7 +697,7 @@ T.capture(function()
 end)
 T.eq("topics follow the new device topic", Properties["Power Command Topic"], "cmnd/kitchen_light/POWER2")
 T.eq("a Tasmota fade topic follows too", Properties["Transition Command Topic"], "cmnd/kitchen_light/Speed")
-T.eq("the dropdown shows the new name", lists["Tasmota Device"].current, "Kitchen [kitchen_light] RGBCCT light")
+T.eq("the dropdown shows the new name", lists["Discovered Device"].current, "Kitchen [kitchen_light] RGBCCT light")
 T.eq("the device changing does not rename the light again", #ShimRenames(), 2)
 
 reset()
@@ -709,7 +709,7 @@ T.eq("another device changing does not touch this light", #sentTo("GET_TASMOTA_D
 -------------------------------------------------------------------------------
 T.section("The choice survives a restart")
 -------------------------------------------------------------------------------
-lists["Tasmota Device"] = nil
+lists["Discovered Device"] = nil
 local restarted, restartErr = T.capture(function()
   OnDriverInit()
   OnDriverLateInit()
@@ -717,7 +717,7 @@ end)
 T.check("restart runs without error", restarted, restartErr)
 T.eq(
   "the chosen device is still selected",
-  lists["Tasmota Device"] and lists["Tasmota Device"].current,
+  lists["Discovered Device"] and lists["Discovered Device"].current,
   "Kitchen [kitchen_light] RGBCCT light"
 )
 reset()
@@ -734,9 +734,9 @@ T.eq("a restart does not bind a second time", #ShimConnections(), 1)
 -------------------------------------------------------------------------------
 T.section("Back to Manual")
 -------------------------------------------------------------------------------
-Properties["Tasmota Device"] = "(Manual)"
+Properties["Discovered Device"] = "(Manual)"
 T.capture(function()
-  OnPropertyChanged("Tasmota Device")
+  OnPropertyChanged("Discovered Device")
 end)
 reset()
 T.capture(function()
@@ -744,5 +744,93 @@ T.capture(function()
 end)
 T.eq("Manual: device changes are no longer applied", #sentTo("GET_TASMOTA_DEVICE"), 0)
 T.eq("the settings stay as they were", Properties["Power Command Topic"], "cmnd/kitchen_light/POWER2")
+
+-------------------------------------------------------------------------------
+T.section("Discovered Device dropdown: Shelly")
+-------------------------------------------------------------------------------
+local Shelly = require("mqtt.shelly")
+local constants = require("constants")
+local SP = "shellyplusrgbwpm-a0a3b3c4d5e6"
+local shellyDev = Shelly.build(
+  { id = SP, mac = "A0A3B3C4D5E6", model = "SNDC-0D4P10WW", gen = 2, ver = "1.4.4", app = "PlusRGBWPM" },
+  SP,
+  { sys = { device = { name = "Living RGBW" } }, ["rgbw:0"] = { id = 0 } }
+)
+local shellyAttribs = {}
+C4.SetPropertyAttribs = function(_, name, value)
+  shellyAttribs[name] = value
+end
+reset()
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICES", {
+    devices = JSON:encode({ Tasmota.summary(renamed), Shelly.summary(shellyDev) }),
+  })
+end)
+local shellyLabel = "Living RGBW [" .. SP .. "] RGBW light"
+T.contains("the dropdown offers the Shelly", lists["Discovered Device"].items, shellyLabel)
+T.contains("next to the Tasmota", lists["Discovered Device"].items, "Kitchen [kitchen_light] RGBCCT light")
+
+Properties["Discovered Device"] = shellyLabel
+T.capture(function()
+  OnPropertyChanged("Discovered Device")
+end)
+T.eq("choosing it asks the broker for it", sentTo("GET_TASMOTA_DEVICE")[1].mac, "A0A3B3C4D5E6")
+local renamesBefore = #ShimRenames()
+-- The restart above left the light without a broker; connect it, and move the
+-- clock past the window that merges state requests.
+local shellyNow = os.time() * 1000 + 10000000
+C4.GetTime = function()
+  return shellyNow
+end
+T.capture(function()
+  ReceivedFromProxy(5002, "BROKER_CONNECTED", {})
+end)
+shellyNow = shellyNow + 10000
+reset()
+local shellyApplied, shellyErr = T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "A0A3B3C4D5E6", device = JSON:encode(shellyDev) })
+end)
+T.check("applying the Shelly runs without error", shellyApplied, shellyErr)
+T.eq("Shelly settings", {
+  Properties["Payload Mode"],
+  Properties["Shelly Topic Prefix"],
+  Properties["Shelly Component"],
+  Properties["Availability Topic"],
+}, { "Shelly (Gen2+)", SP, "rgbw:0", SP .. "/online" })
+local shellyCaps = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
+T.eq("capabilities: dimmer and color", {
+  shellyCaps and shellyCaps.dimmer,
+  shellyCaps and shellyCaps.supports_color,
+}, { "true", "true" })
+local shellySubs = {}
+for _, m in ipairs(sentTo("SUBSCRIBE")) do
+  shellySubs[m.topic] = true
+end
+T.check("subscribes to NotifyStatus", shellySubs[SP .. "/events/rpc"])
+T.check("and to its status answers", shellySubs["control4/" .. SP .. "/rgbw_0/rpc"])
+local stateAsk = published(SP .. "/rpc")[1]
+T.contains("asks the Shelly for its state", stateAsk, "RGBW.GetStatus")
+T.eq("Shelly fields shown, topic fields hidden", {
+  shellyAttribs["Shelly Topic Prefix"],
+  shellyAttribs["Power Command Topic"],
+  shellyAttribs["JSON State Topic"],
+}, { constants.SHOW_PROPERTY, constants.HIDE_PROPERTY, constants.HIDE_PROPERTY })
+T.eq("the light is renamed after the Shelly", last(ShimRenames()).name, "Living RGBW")
+T.eq("light and proxy", #ShimRenames() - renamesBefore, 2)
+
+reset()
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", {
+    topic = SP .. "/events/rpc",
+    payload = '{"method":"NotifyStatus","params":{"ts":1,"rgbw:0":{"id":0,"output":true,"brightness":35,"rgb":[0,0,255],"white":0}}}',
+  })
+end)
+T.eq("Shelly state reaches Control4", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 35)
+reset()
+T.capture(function()
+  ReceivedFromProxy(5001, "SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "0" })
+  ShimFireTimers()
+end)
+T.contains("Control4 turns it off over RPC", published(SP .. "/rpc")[1], '"on":false')
 
 T.finish()

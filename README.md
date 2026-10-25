@@ -48,6 +48,7 @@ The MQTT driver suite consists of three drivers:
   - [Driver Installation](#driver-installation)
   - [Built-in Broker Setup](#built-in-broker-setup)
   - [External Broker Setup](#external-broker-setup)
+  - [Shelly Setup](#shelly-setup)
   - [Driver Properties](#driver-properties)
   - [Driver Actions](#driver-actions)
   - [Programming](#programming)
@@ -70,6 +71,8 @@ The MQTT driver suite consists of three drivers:
   reconnection
 - **Tasmota discovery**: finds Tasmota devices so the MQTT Light driver can set
   itself up from a list
+- **Shelly discovery**: finds Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) and
+  their dimmer, CCT, RGB, RGBW and relay outputs, for the same list
 - Manages subscriptions for connected child drivers
 - Message caching for late-subscribing devices
 - Automatic updates of all MQTT drivers from GitHub
@@ -117,6 +120,37 @@ uses 3883 by default.
 The built-in broker is meant for a trusted home network: it does not check user
 names or passwords and does not encrypt. Use External mode with a broker of your
 own if you need those.
+
+## Shelly Setup
+
+Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) are found in both modes. In the
+Shelly's web page open **Settings → MQTT** and set:
+
+| Setting                            | Value                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| Enable                             | On                                                                       |
+| Server                             | Built-in: `<controller IP>:3883`; External: your broker's `host:port`    |
+| Client ID                          | Leave as it is (the device ID)                                           |
+| MQTT Prefix                        | Leave as it is (the device ID), or a custom prefix of one or two levels  |
+| User / Password                    | Empty in Built-in mode; your broker's account in External mode           |
+| SSL/TLS                            | No TLS                                                                   |
+| RPC over MQTT                      | On (the default): the light controls the device with it                  |
+| RPC status notifications over MQTT | On (the default): the light follows the device with them                 |
+| Generic status update over MQTT    | Optional, not needed                                                     |
+| Enable MQTT control                | On (the default): the broker asks devices to announce themselves with it |
+
+Save; the Shelly reconnects. Within a few seconds of connecting it appears in
+[Shelly Devices](#shelly-devices-read-only) and in the MQTT Light's Discovered
+Device list. Names come from the Shelly: its **Device name** and each output's
+name (**Channel name** or **Light name**), so name them on the Shelly first.
+
+How it works: when a Shelly publishes `<prefix>/online`, the driver sends
+`announce` to `<prefix>/command`; the Shelly answers on `<prefix>/announce`, and
+the driver reads its outputs with `Shelly.GetConfig` over RPC (answers on
+`control4/shelly/rpc`). The driver also asks all devices on `shellies/command`
+when it connects and every 15 minutes. In External mode a custom prefix with
+more than two levels is found only through that broadcast. Gen1 devices (Shelly
+1, 2.5, Dimmer 2, RGBW2, Bulb, Duo) are not supported.
 
 ## External Broker Setup
 
@@ -167,6 +201,11 @@ Sets the logging mode. Default is `Off`.
 `External` connects to an MQTT broker on the network. `Built-in` makes the
 controller the broker. Changing it restarts the MQTT connection; the other
 drivers reconnect on their own.
+
+#### Shelly Devices (read-only)
+
+How many Shelly Gen2+ devices the broker has found. See
+[Shelly Setup](#shelly-setup). The list is kept when the controller restarts.
 
 #### Tasmota Devices (read-only)
 
@@ -269,6 +308,22 @@ and relays with their `POWER` index, plus any settings to change on the device.
 Clears the list. Devices that are connected are found again the next time they
 connect (or restart them, or run `SetOption19 0` on them).
 
+### Print Shelly Devices
+
+Prints every Shelly found: name, topic prefix, model and its outputs with their
+component (`light:0`, `rgbw:0`, `switch:1`, ...).
+
+### Find Shelly Devices
+
+Asks every Shelly on the broker to announce itself and reads each configuration
+again, for example after renaming outputs on a Shelly. Run
+[Print Shelly Devices](#print-shelly-devices) a few seconds later.
+
+### Forget Shelly Devices
+
+Clears the Shelly list. Connected devices are found again when they next connect
+or with [Find Shelly Devices](#find-shelly-devices).
+
 ### Update Drivers
 
 Updates all MQTT drivers to the latest release on GitHub, regardless of the
@@ -322,6 +377,47 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026102505 - 2026-10-25
+
+### Added
+
+- Shelly Gen2+ discovery (Plus, Pro, Gen3, Gen4) in the MQTT Broker driver, in
+  both modes. When a Shelly connects the driver asks it to announce itself and
+  reads its outputs over Shelly RPC. New Shelly Devices property and Print, Find
+  and Forget Shelly Devices actions.
+- MQTT Light: Payload Mode `Shelly (Gen2+)` for dimmer (`light`), tunable white
+  (`cct`), `rgb`, `rgbw` and relay (`switch`) outputs, controlled with
+  `<Type>.Set` over RPC, with fades on the device. Shelly outputs appear in the
+  device list next to Tasmota's; picking one fills in the settings and names the
+  light after the Shelly.
+
+### Changed
+
+- MQTT Light: the Tasmota Device and Tasmota Notes properties are now Discovered
+  Device and Device Notes. A Tasmota device already chosen stays chosen.
+
+## v2026102504 - 2026-10-25
+
+### Fixed
+
+- Fixed Composer Pro refusing the MQTT Light's default color rate ("Value of
+  '0.750' is not valid", with Minimum and Maximum 0). The light now sends its
+  brightness and color fade time range with every capability update, which
+  Composer otherwise reads as 0 to 0.
+
+## v2026102503 - 2026-10-25
+
+### Added
+
+- MQTT Light and MQTT General connect themselves to the MQTT Broker driver; no
+  binding to make in Composer. A light added before the broker is connected by
+  the broker when it starts. Bindings made by hand are left alone.
+- Picking a Tasmota Device renames the MQTT Light after it (the Tasmota
+  DeviceName, or the output's FriendlyName on devices with several outputs).
+- Update Drivers reports in the log whether the update worked: after the drivers
+  restart, `Update to vX succeeded`, or `FAILED` with the drivers that are still
+  on another version. Errors reaching GitHub are logged too.
 
 ## v2026102502 - 2026-10-25
 

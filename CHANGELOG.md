@@ -18,6 +18,25 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102505 - 2026-10-25
+
+### Added
+
+- Shelly Gen2+ discovery (Plus, Pro, Gen3, Gen4) in the MQTT Broker driver, in
+  both modes. When a Shelly connects the driver asks it to announce itself and
+  reads its outputs over Shelly RPC. New Shelly Devices property and Print, Find
+  and Forget Shelly Devices actions.
+- MQTT Light: Payload Mode `Shelly (Gen2+)` for dimmer (`light`), tunable white
+  (`cct`), `rgb`, `rgbw` and relay (`switch`) outputs, controlled with
+  `<Type>.Set` over RPC, with fades on the device. Shelly outputs appear in the
+  device list next to Tasmota's; picking one fills in the settings and names the
+  light after the Shelly.
+
+### Changed
+
+- MQTT Light: the Tasmota Device and Tasmota Notes properties are now Discovered
+  Device and Device Notes. A Tasmota device already chosen stays chosen.
+
 ## v2026102504 - 2026-10-25
 
 ### Fixed

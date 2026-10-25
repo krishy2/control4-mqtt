@@ -127,6 +127,13 @@
         <description>Tasmota devices found through discovery (SetOption19 0, the Tasmota default)</description>
       </property>
       <property>
+        <name>Shelly Devices</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) found over MQTT</description>
+      </property>
+      <property>
         <name>Broker Settings</name>
         <type>LABEL</type>
         <default>Broker Settings</default>
@@ -246,6 +253,18 @@
       <action>
         <name>Forget Tasmota Devices</name>
         <command>ForgetTasmotaDevices</command>
+      </action>
+      <action>
+        <name>Print Shelly Devices</name>
+        <command>PrintShellyDevices</command>
+      </action>
+      <action>
+        <name>Find Shelly Devices</name>
+        <command>FindShellyDevices</command>
+      </action>
+      <action>
+        <name>Forget Shelly Devices</name>
+        <command>ForgetShellyDevices</command>
       </action>
     </actions>
   </config>

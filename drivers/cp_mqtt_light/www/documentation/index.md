@@ -51,6 +51,7 @@ up immediately, no driver reload needed.
       - [White Channel](#white-channel)
       - [Transition](#transition)
   - [Example: Tasmota](#example-tasmota)
+  - [Example: Shelly](#example-shelly)
   - [Example: Zigbee2MQTT](#example-zigbee2mqtt)
   - [How the Light Behaves](#how-the-light-behaves)
   - [Connections](#connections)
@@ -76,9 +77,11 @@ up immediately, no driver reload needed.
 | **White Channel** | a white topic (RGBW lights)                            | A fixed color temperature preset        |
 | **Transition**    | a transition topic                                     | Fades run on the device                 |
 
-- **Two payload styles** - separate plain topics per ability (Tasmota, ESPHome,
-  Shelly) or a single JSON state and command topic (Zigbee2MQTT, Home Assistant
-  JSON schema)
+- **Three payload styles** - separate plain topics per ability (Tasmota,
+  ESPHome), a single JSON state and command topic (Zigbee2MQTT, Home Assistant
+  JSON schema), or Shelly Gen2+ RPC (Plus, Pro, Gen3, Gen4)
+- **Discovery** - pick a Tasmota or Shelly output from a list and every setting
+  is filled in
 - **Shared state topics** - several abilities can read from the same topic with
   their own JSONPath (e.g. Tasmota's `stat/<topic>/RESULT`)
 - **Color formats** - RGB, Hex (with or without `#`, including Tasmota's extra
@@ -156,32 +159,44 @@ means the opposite.
 
 #### Light Settings
 
-##### Tasmota Device
+##### Discovered Device
 
-The easiest way to set up a Tasmota light. The list shows every light and relay
-the MQTT Broker driver has found through Tasmota discovery, for example
-`Kitchen [tasmota_A1B2C3] RGBCCT light`. Picking one fills in every setting
-below: topics, value paths, `POWER<n>`, dimmer scale, color temperature range,
-color format, state request and Online/Offline.
+The easiest way to set up a Tasmota or Shelly light. The list shows every light
+and relay the MQTT Broker driver has found, for example
+`Kitchen [tasmota_A1B2C3] RGBCCT light` or
+`Living [shellyplusrgbwpm-a0a3b3c4d5e6] RGBW light`. Picking one fills in every
+setting below. For Tasmota: topics, value paths, `POWER<n>`, dimmer scale, color
+temperature range, color format, state request and Online/Offline. For Shelly:
+[Payload Mode](#payload-mode--separate-topics--json--shelly-gen2-)
+`Shelly (Gen2+)`, the topic prefix and output, color temperature range, state
+request and Online/Offline.
 
-Picking a device also renames the light in Composer and Navigator: a bulb gets
-its Tasmota DeviceName (`Hall Lamp`); an output of a device with several gets
-its own FriendlyName, or the DeviceName and the output (`Kitchen RGBCCT light`).
-Tasmota's default names (`Tasmota`, `Tasmota2`, ...) are skipped. This happens
-only when you pick a device, so a name you change afterwards stays.
+Picking a device also renames the light in Composer and Navigator.
+
+- Tasmota: a bulb gets its DeviceName (`Hall Lamp`); an output of a device with
+  several gets its own FriendlyName, or the DeviceName and the output
+  (`Kitchen RGBCCT light`). Tasmota's default names (`Tasmota`, `Tasmota2`, ...)
+  are skipped.
+- Shelly: the output's name when it has one, otherwise the device name (with the
+  output when the device has several, `Kitchen Dimmer 2`), otherwise the device
+  ID.
+
+This happens only when you pick a device, so a name you change afterwards stays.
 
 The light keeps following the device: if its topic or setup changes, the
 settings are updated. Choose `(Manual)` to stop following and keep the settings
 as they are, for example after editing them by hand.
 
 Tasmota announces itself when it connects to the broker, as long as discovery is
-on (`SetOption19 0`, the default). A device that does not appear in the list has
-discovery off or is not connected yet.
+on (`SetOption19 0`, the default). Shelly devices are asked by the MQTT Broker
+driver when they connect; see its documentation for the Shelly MQTT settings. A
+device that does not appear in the list is not set up for discovery or is not
+connected yet.
 
-##### Tasmota Notes (read-only)
+##### Device Notes (read-only)
 
-Shown when the chosen Tasmota device has a setting that keeps this light from
-working well, for example `SetOption4 1`, with what to change.
+Shown when the chosen device has a setting that keeps this light from working
+well, for example Tasmota's `SetOption4 1`, with what to change.
 
 ##### Capabilities (read-only)
 
@@ -192,12 +207,35 @@ The abilities the light has right now, for example
 
 The state reported to Control4, for example `On 45% 2700K`.
 
-##### Payload Mode \[ **_Separate Topics_** | JSON \]
+##### Payload Mode \[ **_Separate Topics_** | JSON | Shelly (Gen2+) \]
 
 - **Separate Topics** - each ability has its own state and command topic with
-  plain values. Use this for Tasmota, ESPHome and Shelly.
+  plain values. Use this for Tasmota and ESPHome.
 - **JSON** - one state topic and one command topic carrying a JSON object. Each
   ability is turned on by filling in its **Key**. Use this for Zigbee2MQTT.
+- **Shelly (Gen2+)** - one output of a Shelly Plus, Pro, Gen3 or Gen4 device,
+  controlled over Shelly's RPC. Only
+  [Shelly Topic Prefix and Shelly Component](#shelly-topic-prefix--shelly-component-shelly-mode)
+  are needed; the output type decides the abilities and the topic settings below
+  are not used.
+
+##### Shelly Topic Prefix / Shelly Component (Shelly mode)
+
+The device's MQTT topic prefix (its device ID unless changed, for example
+`shellyplus1pm-a8032ab12345`) and the output: `light:0` (dimmer), `cct:0`
+(tunable white), `rgb:0`, `rgbw:0` or `switch:0` (relay, on/off). The number is
+the output, counting from 0.
+
+| Output     | Abilities in Control4                                  |
+| ---------- | ------------------------------------------------------ |
+| `switch:N` | On/Off                                                 |
+| `light:N`  | Dimmer                                                 |
+| `cct:N`    | Dimmer, Color Temp (within Color Temp Min/Max)         |
+| `rgb:N`    | Dimmer, Color                                          |
+| `rgbw:N`   | Dimmer, Color, White Channel (at **White Color Temp**) |
+
+Dimmers, CCT and color outputs fade on the device. An RGBW output shows color
+with the white channel off, or white with the color off.
 
 ##### JSON State Topic / JSON Command Topic (JSON mode)
 
@@ -343,8 +381,8 @@ on the device once with `Fade 1`.
 
 ## Example: Tasmota
 
-The quickest way is the [Tasmota Device](#tasmota-device) list. To set it up by
-hand, for a Tasmota bulb with topic `kitchen`:
+The quickest way is the [Discovered Device](#discovered-device) list. To set it
+up by hand, for a Tasmota bulb with topic `kitchen`:
 
 | Property                 | Value                 |
 | ------------------------ | --------------------- |
@@ -394,6 +432,27 @@ example for a light on the second load:
 
 Check the Tasmota console: `stat/<topic>/RESULT` shows which `POWER<n>` changes
 when the light is switched.
+
+## Example: Shelly
+
+The quickest way is the [Discovered Device](#discovered-device) list. By hand,
+for the first dimmer of a Shelly Pro Dimmer 2PM with the default prefix:
+
+| Property              | Value                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Payload Mode          | Shelly (Gen2+)                                                                                               |
+| Shelly Topic Prefix   | `shellyprodm2pm-aabbccddeeff`                                                                                |
+| Shelly Component      | `light:0`                                                                                                    |
+| State Request Topic   | `shellyprodm2pm-aabbccddeeff/rpc`                                                                            |
+| State Request Payload | `{"id":1,"src":"control4/shellyprodm2pm-aabbccddeeff/light_0","method":"Light.GetStatus","params":{"id":0}}` |
+| Availability Topic    | `shellyprodm2pm-aabbccddeeff/online`                                                                         |
+| Payload Available     | `true`                                                                                                       |
+| Payload Not Available | `false`                                                                                                      |
+
+The light sends `Light.Set` (or `CCT.Set`, `RGB.Set`, `RGBW.Set`, `Switch.Set`)
+to `<prefix>/rpc`, and follows the device through the `NotifyStatus` messages on
+`<prefix>/events/rpc` and the answers to its state request on
+`control4/<prefix>/<output>/rpc`.
 
 ## Example: Zigbee2MQTT
 
