@@ -1,0 +1,155 @@
+name: Release request
+
+# Publishes a release when .github/release-version changes on main.
+#
+# To release: put the version (YYYYMMDD, higher than the last release) in
+# .github/release-version, retitle the CHANGELOG's "Unreleased" section to
+# "## vYYYYMMDD - <date>", and push to main. This workflow checks and tests
+# the code, builds every driver with that version, then creates the tag
+# vYYYYMMDD and a GitHub release with the .c4z files, docs and zip.
+#
+# It exists because tags cannot always be pushed from where releases are
+# prepared; the tag is created here, by GitHub Actions, instead.
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/release-version']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-request
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read the requested version
+        run: |
+          version=$(tr -d '[:space:]' < .github/release-version)
+          if [[ ! "$version" =~ ^[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])$ ]]; then
+            echo "::error::.github/release-version must hold one version, YYYYMMDD; it holds '$version'."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::Tag v$version already exists. Raise the version in .github/release-version."
+            exit 1
+          fi
+          latest=$(git tag --list 'v[0-9]*' | sed -E 's/^v([0-9]{8}).*/\1/' | sort -n | tail -1)
+          if [ -n "$latest" ] && [ "$version" -le "$latest" ]; then
+            echo "::error::Version $version is not higher than the latest release v$latest; the updater would ignore it."
+            exit 1
+          fi
+          echo "DRIVER_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+          echo "Releasing version $version as v$version"
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v12
+        with:
+          luaVersion: 'luajit-2.1'
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Setup stylua
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors -o "$RUNNER_TEMP/stylua.zip" \
+            "https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-linux-$(uname -m).zip"
+          unzip -q "$RUNNER_TEMP/stylua.zip" -d "$RUNNER_TEMP/stylua"
+          echo "$RUNNER_TEMP/stylua" >> "$GITHUB_PATH"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxml2-dev \
+            libxslt-dev \
+            libssl-dev \
+            swig \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libcairo2 \
+            libgdk-pixbuf-2.0-0 \
+            fonts-dejavu-core \
+            fonts-liberation \
+            fonts-noto-core \
+            fonts-symbola
+
+      - name: Initialize project
+        run: make init
+
+      - name: Check formatting
+        run: make check
+
+      - name: Test
+        run: make test
+
+      - name: Build
+        run: make build
+
+      - name: Verify the drivers carry the release version
+        run: |
+          count=0
+          for c4z in dist/oss/c4z/*.c4z; do
+            got=$(python3 -c 'import re, sys, zipfile; m = re.search(r"<version>(.*?)</version>", zipfile.ZipFile(sys.argv[1]).read("driver.xml").decode(), re.S); print(m.group(1) if m else "")' "$c4z")
+            if [ "$got" != "$DRIVER_VERSION" ]; then
+              echo "::error::$c4z has version '$got', expected '$DRIVER_VERSION'"
+              exit 1
+            fi
+            echo "$c4z: $got"
+            count=$((count + 1))
+          done
+          # Every driver the updater lists must be in the release, or updates stop.
+          for name in $(grep -o '"cp_[a-z_]*\.c4z"' drivers/cp_mqtt_broker/driver.lua | tr -d '"'); do
+            if [ ! -f "dist/oss/c4z/$name" ]; then
+              echo "::error::$name is in the broker's update list but was not built"
+              exit 1
+            fi
+          done
+          echo "$count drivers built"
+
+      - name: Release notes from the changelog
+        run: |
+          python3 - <<'EOF'
+          import os, re
+          version = os.environ["DRIVER_VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"^## v" + version + r"\b[^\n]*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          body = m.group(1) if m else ""
+          body = re.sub(r"<!--.*?-->", "", body, flags=re.S).strip()
+          if not body:
+              body = "See CHANGELOG.md."
+          body += (
+              "\n\n### Install\n\nInstall `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z` and "
+              "`cp_mqtt_light.c4z` with Composer Pro (Driver → Add or Update Driver). "
+              "Projects with Automatic Updates on in the MQTT Broker driver update by themselves."
+          )
+          open(os.environ["RUNNER_TEMP"] + "/notes.md", "w", encoding="utf-8").write(body)
+          print(body)
+          EOF
+
+      - name: Create tag and release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: MQTT ${{ env.DRIVER_VERSION }}
+          body_path: ${{ runner.temp }}/notes.md
+          make_latest: true
+          files: |
+            dist/oss/c4z/*.c4z
+            dist/oss/docs/*.pdf
+            dist/oss/*.zip
+          fail_on_unmatched_files: true
