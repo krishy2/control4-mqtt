@@ -43,6 +43,12 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 
 - The MQTT drivers are now published by Control Pro and update from
   github.com/krishy2/control4-mqtt. DriverCentral licensing has been removed.
+- The drivers are now fully independent of other MQTT driver suites and can be
+  installed next to them in the same project: new file names
+  (`cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`) and their
+  own connection type. MQTT Universal is renamed **MQTT General**. Because the
+  file names changed, these are new drivers to Composer: add them to the project
+  again and remove the previous ones.
 - The MQTT Light documentation reads the Tasmota power state from
   `stat/<topic>/RESULT` and explains `POWER<n>` for Tasmota devices with more
   than one load.

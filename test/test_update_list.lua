@@ -18,7 +18,7 @@ local function readFile(path)
   return body
 end
 
-local src = readFile("drivers/mqtt_broker/driver.lua")
+local src = readFile("drivers/cp_mqtt_broker/driver.lua")
 local listed = {}
 local block = src:match("DRIVER_FILENAMES%s*=%s*(%b{})")
 T.check("the broker declares DRIVER_FILENAMES", block ~= nil)
@@ -33,7 +33,7 @@ for dir in pipe:lines() do
   T.check(
     filename .. " is listed",
     listed[filename] == true,
-    "add it to DRIVER_FILENAMES in drivers/mqtt_broker/driver.lua"
+    "add it to DRIVER_FILENAMES in drivers/cp_mqtt_broker/driver.lua"
   )
   listed[filename] = nil
 end

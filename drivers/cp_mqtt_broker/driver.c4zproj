@@ -1,4 +1,4 @@
-<Driver type="c4z" name="mqtt_broker" squishLua="true">
+<Driver type="c4z" name="cp_mqtt_broker" squishLua="true">
   <Items>
     <Item type="dir" c4zDir="www" name="www" recurse="true" exclude="false"/>
     <Item type="file" name="driver.lua"/>

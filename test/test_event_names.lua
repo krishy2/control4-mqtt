@@ -1,4 +1,4 @@
--- Tests that the events MQTT Universal adds at runtime put NAME in their
+-- Tests that the events MQTT General adds at runtime put NAME in their
 -- descriptions. Director replaces NAME with the device's name, and Composer Pro
 -- titles a script with the description, so without it the title does not say
 -- which device the event is from.

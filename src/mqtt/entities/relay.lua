@@ -13,7 +13,7 @@ local MqttRelay = setmetatable({
   TYPE = "RELAY",
   BINDING_CLASS = "RELAY",
   BINDING_TYPE = "PROXY",
-  BINDINGS_NAMESPACE = "MQTTUniversal",
+  BINDINGS_NAMESPACE = "MqttRelay",
 }, { __index = MqttEntity })
 
 --- Create a new relay entity instance.

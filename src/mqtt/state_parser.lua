@@ -2,7 +2,7 @@
 --- Generic state parsing utilities using "match one, default other" logic.
 ---
 --- This module extracts the common pattern used for parsing boolean states from
---- MQTT payloads throughout the mqtt_universal driver. The logic handles three cases:
+--- MQTT payloads throughout the MQTT General driver. The logic handles three cases:
 --- 1. Both values specified: require exact match for either
 --- 2. Only trueValue specified: match = true, any other value = false
 --- 3. Only falseValue specified: match = false, any other value = true

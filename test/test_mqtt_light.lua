@@ -1,6 +1,6 @@
 -- Tests for the MQTT Light driver: color math, capability detection, payload
 -- translation for Tasmota-style topics and Zigbee2MQTT-style JSON, ramps,
--- keypad buttons, and a smoke test of drivers/mqtt_light/driver.lua.
+-- keypad buttons, and a smoke test of drivers/cp_mqtt_light/driver.lua.
 --
 -- Run from the repo root:
 --   make test
@@ -416,7 +416,7 @@ light:handleProxyCommand("SET_PRESET_LEVEL", { LEVEL = "80" })
 T.eq("On preset is saved", saved.onLevel, 80)
 
 -------------------------------------------------------------------------------
-T.section("drivers/mqtt_light/driver.lua loads and starts")
+T.section("drivers/cp_mqtt_light/driver.lua loads and starts")
 -------------------------------------------------------------------------------
 local function readFile(path)
   local fh = assert(io.open(path, "r"))
@@ -424,7 +424,7 @@ local function readFile(path)
   fh:close()
   return body
 end
-local xml = readFile("drivers/mqtt_light/driver.xml")
+local xml = readFile("drivers/cp_mqtt_light/driver.xml")
 T.contains("driver.xml declares the light_v2 proxy on binding 5001", xml, '<proxy proxybindingid="5001"')
 T.check(
   "driver.xml is not a combo driver (combo drivers get no proxy or Navigator UI)",
@@ -452,7 +452,7 @@ end
 reset()
 local ok, err = pcall(function()
   T.capture(function()
-    dofile("drivers/mqtt_light/driver.lua")
+    dofile("drivers/cp_mqtt_light/driver.lua")
     OnDriverInit()
     OnDriverLateInit()
   end)

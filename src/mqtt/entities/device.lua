@@ -14,7 +14,7 @@ local events = require("lib.events")
 local conditionals = require("lib.conditionals")
 local stateParser = require("mqtt.state_parser")
 
-local EVENTS_NAMESPACE = "MQTTUniversal"
+local EVENTS_NAMESPACE = "MqttDevice"
 
 local MqttDevice = {
   TYPE = "DEVICE",

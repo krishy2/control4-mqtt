@@ -1,8 +1,8 @@
 <devicedata>
-  <name>MQTT Universal</name>
+  <name>MQTT General</name>
   <version/>
   <manufacturer>Control Pro</manufacturer>
-  <model>MQTT Universal</model>
+  <model>MQTT General</model>
   <creator>Chris Toth</creator>
   <small image_source="c4z">icons/device_sm.png</small>
   <large image_source="c4z">icons/device_lg.png</large>
@@ -371,7 +371,7 @@
       <linelevel>False</linelevel>
       <classes>
         <class>
-          <classname>MQTT_BROKER</classname>
+          <classname>CP_MQTT_BROKER</classname>
           <autobind>True</autobind>
         </class>
       </classes>

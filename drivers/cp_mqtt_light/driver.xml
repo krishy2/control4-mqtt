@@ -554,7 +554,7 @@
       <linelevel>False</linelevel>
       <classes>
         <class>
-          <classname>MQTT_BROKER</classname>
+          <classname>CP_MQTT_BROKER</classname>
           <autobind>True</autobind>
         </class>
       </classes>

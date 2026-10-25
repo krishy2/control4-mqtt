@@ -22,11 +22,11 @@ ______________________________________________________________________
 > DISCLAIMER: This software is neither affiliated with nor endorsed by either
 > Control4 or MQTT.
 
-The MQTT Universal driver is a comprehensive solution for integrating MQTT
-devices and variables with Control4. It allows you to dynamically create relays,
-contact sensors, buttons, and variables that sync with MQTT topics. Each item
-can be configured with its own state and command topics, enabling flexible
-integration with any MQTT-based system.
+The MQTT General driver is a comprehensive solution for integrating MQTT devices
+and variables with Control4. It allows you to dynamically create relays, contact
+sensors, buttons, and variables that sync with MQTT topics. Each item can be
+configured with its own state and command topics, enabling flexible integration
+with any MQTT-based system.
 
 # <span style="color:#660066">Index</span>
 
@@ -87,8 +87,8 @@ integration with any MQTT-based system.
 ## Driver Installation
 
 1. Ensure the MQTT Broker driver is installed and connected.
-1. Add the "MQTT Universal" driver to your project.
-1. In the Connections tab, bind the MQTT Universal driver to the MQTT Broker.
+1. Add the "MQTT General" driver to your project.
+1. In the Connections tab, bind the MQTT General driver to the MQTT Broker.
 1. Configure global availability settings (optional).
 1. Add devices and variables, then configure their MQTT topics.
 

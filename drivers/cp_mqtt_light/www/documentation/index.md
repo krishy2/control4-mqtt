@@ -96,7 +96,7 @@ up immediately, no driver reload needed.
 
 1. Install the MQTT Broker driver and connect it to your broker (see its
    documentation).
-1. Install `mqtt_light.c4z` and add one **MQTT Light** driver per light. It
+1. Install `cp_mqtt_light.c4z` and add one **MQTT Light** driver per light. It
    binds to the MQTT Broker automatically.
 1. Fill in the topics for the abilities your light has.
 

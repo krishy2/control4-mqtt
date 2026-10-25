@@ -206,7 +206,7 @@ local function updatePropertyVisibility()
   end
 end
 
---- Update availability property visibility (same behaviour as MQTT Universal).
+--- Update availability property visibility (same behaviour as MQTT General).
 local function updateAvailabilityPropertyVisibility()
   local hasAvailabilityTopic = not IsEmpty(Properties["Availability Topic"])
   local vis = hasAvailabilityTopic and constants.SHOW_PROPERTY or constants.HIDE_PROPERTY

@@ -21,6 +21,11 @@ record-driver-version:
 # Runs after the stock build steps, so a failed build does not use up a version.
 build build-nodocs: record-driver-version
 
+# ─── README ───────────────────────────────────────────────────────────────────
+# The README is generated from the broker driver's documentation. The drivers
+# carry a cp_ prefix so they never share a file name with other MQTT drivers.
+README_DRIVER := cp_mqtt_broker
+
 # ─── Experiments ─────────────────────────────────────────────────────────────
 # Test drivers under experiments/ are built on their own and never go into a
 # release. Output: dist/experiments/<name>.c4z

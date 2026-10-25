@@ -1,18 +1,18 @@
 --- MQTT Broker driver
 ---
---- Gives the MQTT child drivers (MQTT Light, MQTT Universal) their MQTT
+--- Gives the MQTT child drivers (MQTT Light, MQTT General) their MQTT
 --- connection. Two modes:
 ---   External  connects to an MQTT broker on the network (Mosquitto, ...)
 ---   Built-in  is the broker: devices such as Tasmota connect to the
 ---             controller itself, on Listen Port (default 3883)
---- Child drivers see no difference: they bind to MQTT_BROKER and use the same
+--- Child drivers see no difference: they bind to CP_MQTT_BROKER and use the same
 --- SUBSCRIBE / PUBLISH / UNSUBSCRIBE / GET_STATUS commands in both modes.
 
 DRIVER_GITHUB_REPO = "krishy2/control4-mqtt"
 DRIVER_FILENAMES = {
-  "mqtt_broker.c4z",
-  "mqtt_universal.c4z",
-  "mqtt_light.c4z",
+  "cp_mqtt_broker.c4z",
+  "cp_mqtt_general.c4z",
+  "cp_mqtt_light.c4z",
 }
 
 require("lib.utils")

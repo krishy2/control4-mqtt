@@ -1,4 +1,4 @@
---- MQTT Universal Driver
+--- MQTT General Driver
 --- A Control4 driver for integrating MQTT-based devices and variables.
 ---
 --- This driver connects to an MQTT broker (via the MQTT Broker driver) and allows

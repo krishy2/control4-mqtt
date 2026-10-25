@@ -23,17 +23,17 @@ The other MQTT drivers work the same in both modes.
 
 The MQTT driver suite consists of three drivers:
 
-| Driver             | Direction     | Purpose                                                                                         |
-| ------------------ | ------------- | ----------------------------------------------------------------------------------------------- |
-| **MQTT Broker**    | N/A           | The MQTT connection: an external broker, or the built-in one                                    |
-| **MQTT Universal** | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
-| **MQTT Light**     | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)            |
+| Driver           | Direction     | Purpose                                                                                         |
+| ---------------- | ------------- | ----------------------------------------------------------------------------------------------- |
+| **MQTT Broker**  | N/A           | The MQTT connection: an external broker, or the built-in one                                    |
+| **MQTT General** | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics) |
+| **MQTT Light**   | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)            |
 
 **Typical Setup:**
 
 1. Add the **MQTT Broker** driver and choose its mode
 1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
-1. Add **MQTT Universal** for other MQTT devices: relays, contacts, buttons,
+1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
 
 # <span style="color:#660066">Index</span>
@@ -78,7 +78,8 @@ The MQTT driver suite consists of three drivers:
    [GitHub](https://github.com/krishy2/control4-mqtt/releases/latest).
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
-   the `mqtt_broker.c4z`, `mqtt_universal.c4z` and `mqtt_light.c4z` drivers.
+   the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z` and `cp_mqtt_light.c4z`
+   drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
@@ -314,6 +315,12 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 
 - The MQTT drivers are now published by Control Pro and update from
   github.com/krishy2/control4-mqtt. DriverCentral licensing has been removed.
+- The drivers are now fully independent of other MQTT driver suites and can be
+  installed next to them in the same project: new file names
+  (`cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`) and their
+  own connection type. MQTT Universal is renamed **MQTT General**. Because the
+  file names changed, these are new drivers to Composer: add them to the project
+  again and remove the previous ones.
 - The MQTT Light documentation reads the Tasmota power state from
   `stat/<topic>/RESULT` and explains `POWER<n>` for Tasmota devices with more
   than one load.

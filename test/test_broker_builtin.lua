@@ -1,6 +1,6 @@
 -- Tests for the MQTT Broker driver's Built-in mode: the controller is the
 -- broker, MQTT devices connect over TCP, and child drivers (MQTT Light,
--- MQTT Universal) use the same SUBSCRIBE / PUBLISH commands as in External
+-- MQTT General) use the same SUBSCRIBE / PUBLISH commands as in External
 -- mode.
 --
 -- C4:CreateTCPServer is faked here so the test needs no network.
@@ -154,7 +154,7 @@ end
 -- Load the driver
 -------------------------------------------------------------------------------
 
-local xml = assert(io.open("drivers/mqtt_broker/driver.xml")):read("*a")
+local xml = assert(io.open("drivers/cp_mqtt_broker/driver.xml")):read("*a")
 for block in xml:gmatch("<property>(.-)</property>") do
   Properties[block:match("<name>(.-)</name>")] = block:match("<default>(.-)</default>") or ""
 end
@@ -162,7 +162,7 @@ Properties["Log Level"] = "2 - Warning"
 Properties["Automatic Updates"] = "Off"
 
 local loaded, loadErr = T.capture(function()
-  dofile("drivers/mqtt_broker/driver.lua")
+  dofile("drivers/cp_mqtt_broker/driver.lua")
   OnDriverInit()
   OnDriverLateInit()
 end)
@@ -274,7 +274,7 @@ end)
 dev2:feed(Codec.publish("tele/tasmota_2/LWT", "Online", { retain = true }))
 T.eq("no messages after unsubscribing", childMessages(), {})
 T.capture(function()
-  OnBindingChanged(5001, "MQTT_BROKER", false, UNIVERSAL, 1)
+  OnBindingChanged(5001, "CP_MQTT_BROKER", false, UNIVERSAL, 1)
 end)
 local dev3 = connectDevice("3")
 dev3:feed(Codec.publish("stat/tasmota_1/RESULT", "x"))
