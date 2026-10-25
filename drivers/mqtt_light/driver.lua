@@ -262,6 +262,32 @@ local function updateOnline(force)
   SendToProxy(LIGHT_PROXY_BINDING, "ONLINE_CHANGED", { STATE = tostring(online) }, "NOTIFY")
 end
 
+--- When the last state request was sent (ms), to merge triggers that arrive together.
+local lastStateRequest = nil
+
+--- Ask the device for its full state (Tasmota: cmnd/<topic>/STATE), so the
+--- light is right after a restart instead of unknown until the device changes.
+--- Sent when the broker connects and when the device comes online.
+--- @param reason string
+local function requestState(reason)
+  local topic = Properties["State Request Topic"]
+  if IsEmpty(topic) or not MqttDevice:isConnected() then
+    return
+  end
+  local now = C4:GetTime()
+  if lastStateRequest ~= nil and now - lastStateRequest < 2000 then
+    return
+  end
+  lastStateRequest = now
+  log:debug("Requesting device state (%s): %s", reason, topic)
+  SendToProxy(MQTT_BINDING, "PUBLISH", {
+    topic = topic,
+    payload = Properties["State Request Payload"] or "",
+    qos = light.cfg.qos or "0",
+    retain = "false",
+  })
+end
+
 -----------------------------------------------------------------------
 -- Applying configuration
 -----------------------------------------------------------------------
@@ -477,6 +503,7 @@ function RFP.BROKER_CONNECTED(idBinding, strCommand, tParams, args)
   syncSubscriptions()
   MqttDevice:subscribeToAvailability(Properties["Availability Topic"], tostring(C4:GetDeviceID()))
   updateOnline()
+  requestState("broker connected")
 end
 
 function RFP.BROKER_DISCONNECTED(idBinding, strCommand, tParams, args)
@@ -527,8 +554,12 @@ function EC.MQTT_MESSAGE(tParams)
 
   local availabilityTopic = Properties["Availability Topic"]
   if not IsEmpty(availabilityTopic) and topic == availabilityTopic then
+    local wasAvailable = MqttDevice:isAvailable()
     MqttDevice:updateAvailability(payload, availabilityConfig())
     updateOnline()
+    if MqttDevice:isAvailable() == true and wasAvailable ~= true then
+      requestState("device online")
+    end
   end
 
   if subscribed[topic] then

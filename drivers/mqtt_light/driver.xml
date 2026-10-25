@@ -191,6 +191,18 @@
         <description>Topic to publish JSON commands to (e.g. zigbee2mqtt/kitchen/set)</description>
       </property>
       <property>
+        <name>State Request Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional. Topic that asks the device for its full state, sent when the broker connects and when the device comes online (Tasmota: cmnd/&lt;topic&gt;/STATE)</description>
+      </property>
+      <property>
+        <name>State Request Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload sent with the state request. Empty for Tasmota.</description>
+      </property>
+      <property>
         <name>Optimistic</name>
         <type>LIST</type>
         <default>Auto</default>

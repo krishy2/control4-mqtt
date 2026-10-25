@@ -1,15 +1,15 @@
 <devicedata>
   <name>MQTT Broker</name>
   <version/>
-  <manufacturer>Finite Labs</manufacturer>
+  <manufacturer>Control Pro</manufacturer>
   <model>MQTT Broker</model>
-  <creator>Derek Miller</creator>
+  <creator>Chris Toth</creator>
   <small image_source="c4z">icons/device_sm.png</small>
   <large image_source="c4z">icons/device_lg.png</large>
   <control>lua_gen</control>
   <controlmethod>ip</controlmethod>
   <driver>DriverWorks</driver>
-  <copyright>Copyright 2026 Finite Labs, LLC. All rights reserved.</copyright>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
   <created>06/06/2025 12:00:00 PM</created>
   <modified/>
   <combo>true</combo>
@@ -45,18 +45,10 @@
     <documentation file="www/documentation/index.html"/>
     <properties>
       <property>
-        <name>Cloud</name>
+        <name>Updates</name>
         <type>LABEL</type>
-        <default>Cloud Settings</default>
+        <default>Update Settings</default>
       </property>
-      <!-- #ifdef DRIVERCENTRAL -->
-      <property>
-        <name>Cloud Status</name>
-        <default/>
-        <type>STRING</type>
-        <readonly>true</readonly>
-      </property>
-      <!-- #endif -->
       <property>
         <name>Automatic Updates</name>
         <type>LIST</type>
@@ -66,7 +58,6 @@
         </items>
         <default>On</default>
       </property>
-      <!-- #ifndef DRIVERCENTRAL -->
       <property>
         <name>Update Channel</name>
         <type>LIST</type>
@@ -76,7 +67,6 @@
           <item>Prerelease</item>
         </items>
       </property>
-      <!-- #endif -->
       <property>
         <name>Driver</name>
         <type>LABEL</type>
@@ -120,6 +110,16 @@
         </items>
       </property>
       <property>
+        <name>Broker Mode</name>
+        <type>LIST</type>
+        <default>External</default>
+        <items>
+          <item>External</item>
+          <item>Built-in</item>
+        </items>
+        <description>External: connect to an MQTT broker on the network. Built-in: the controller is the broker and devices connect to it on Listen Port.</description>
+      </property>
+      <property>
         <name>Broker Settings</name>
         <type>LABEL</type>
         <default>Broker Settings</default>
@@ -157,17 +157,80 @@
         <default>60</default>
         <description>Keep-alive interval in seconds</description>
       </property>
+      <property>
+        <name>Built-in Broker</name>
+        <type>LABEL</type>
+        <default>Built-in Broker</default>
+      </property>
+      <property>
+        <name>Listen Port</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>65535</maximum>
+        <default>3883</default>
+        <description>Port devices connect to. 1883 is used by the controller's own broker.</description>
+      </property>
+      <property>
+        <name>Max Clients</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>1000</maximum>
+        <default>250</default>
+        <description>Refuse new connections above this many</description>
+      </property>
+      <property>
+        <name>Connected Devices</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>MQTT devices connected to the built-in broker</description>
+      </property>
+      <property>
+        <name>Messages per Second</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Messages received per second, last 5 seconds</description>
+      </property>
+      <property>
+        <name>Broker Errors</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Protocol, socket and driver errors since start. Should stay 0.</description>
+      </property>
+      <property>
+        <name>Timer Lag</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>How late a 1-second timer fires: a measure of how busy Director is</description>
+      </property>
     </properties>
     <actions>
-      <!-- #ifndef DRIVERCENTRAL -->
       <action>
         <name>Update Drivers</name>
         <command>UpdateDrivers</command>
       </action>
-      <!-- #endif -->
       <action>
         <name>Reconnect</name>
         <command>Reconnect</command>
+      </action>
+      <action>
+        <name>Print Clients</name>
+        <command>PrintClients</command>
+      </action>
+      <action>
+        <name>Print Retained</name>
+        <command>PrintRetained</command>
+      </action>
+      <action>
+        <name>Print Report</name>
+        <command>PrintReport</command>
+      </action>
+      <action>
+        <name>Reset Statistics</name>
+        <command>ResetStatistics</command>
       </action>
     </actions>
   </config>

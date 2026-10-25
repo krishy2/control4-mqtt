@@ -19,12 +19,8 @@ ______________________________________________________________________
 
 # <span style="color:#660066">Overview</span>
 
-<!-- #ifndef DRIVERCENTRAL -->
-
 > DISCLAIMER: This software is neither affiliated with nor endorsed by either
 > Control4 or MQTT.
-
-<!-- #endif -->
 
 The MQTT Light driver makes one MQTT light a native Control4 light. It uses the
 Control4 light_v2 proxy, so the light works everywhere a Control4 light does:
@@ -179,6 +175,15 @@ The state reported to Control4, for example `On 45% 2700K`.
 
 For example `zigbee2mqtt/Kitchen` and `zigbee2mqtt/Kitchen/set`.
 
+##### State Request Topic / State Request Payload
+
+Optional. A message that asks the device for its full state. It is sent when the
+broker connects and whenever the device comes back online (see
+[Availability Settings](#availability-settings)), so the light shows the right
+state after a controller restart instead of unknown. For Tasmota use
+`cmnd/<topic>/STATE` with an empty payload: the answer arrives on
+`stat/<topic>/RESULT`.
+
 ##### Optimistic \[ **_Auto_** | Yes | No \]
 
 Whether Control4 shows the new state as soon as a command is sent, or waits for
@@ -315,7 +320,9 @@ For a Tasmota bulb with topic `kitchen`:
 | Property                 | Value                 |
 | ------------------------ | --------------------- |
 | Payload Mode             | Separate Topics       |
-| Power State Topic        | `stat/kitchen/POWER`  |
+| State Request Topic      | `cmnd/kitchen/STATE`  |
+| Power State Topic        | `stat/kitchen/RESULT` |
+| Power Value Path         | `$.POWER`             |
 | Power Command Topic      | `cmnd/kitchen/POWER`  |
 | Brightness State Topic   | `stat/kitchen/RESULT` |
 | Brightness Value Path    | `$.Dimmer`            |
@@ -335,11 +342,29 @@ Leave out the color temperature rows for an RGB bulb and the color rows for a
 tunable white bulb. For an RGBW strip add **White Command Topic**
 `cmnd/kitchen/White` (state from `stat/kitchen/RESULT`, path `$.White`).
 
-> Tasmota publishes `stat/<topic>/RESULT` whenever the light changes, including
-> from its own buttons. These messages are not retained, so right after a
-> controller restart the state is unknown until the light next changes; any
-> command (or `Backlog Power; Dimmer; CT; Color` in the Tasmota console) brings
-> it up to date.
+Tasmota publishes `stat/<topic>/RESULT` whenever the light changes, including
+from its own buttons, and as the answer to the state request. Reading every
+ability from `RESULT` means one subscription covers them all.
+
+With the MQTT Broker driver in **Built-in** mode, set the Tasmota's MQTT Host to
+the controller's IP address and its Port to the broker's **Listen Port**
+(default `3883`).
+
+### Tasmota with more than one load
+
+On a Tasmota with several relays, or a relay and a light, each load has an
+index: `POWER1`, `POWER2`, and so on. Plain `POWER` only fits single-load
+devices. Use the light's index in both the command topic and the value path, for
+example for a light on the second load:
+
+| Property            | Value                 |
+| ------------------- | --------------------- |
+| Power State Topic   | `stat/kitchen/RESULT` |
+| Power Value Path    | `$.POWER2`            |
+| Power Command Topic | `cmnd/kitchen/POWER2` |
+
+Check the Tasmota console: `stat/<topic>/RESULT` shows which `POWER<n>` changes
+when the light is switched.
 
 ## Example: Zigbee2MQTT
 

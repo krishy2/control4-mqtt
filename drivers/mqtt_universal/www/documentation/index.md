@@ -1,4 +1,4 @@
-<!-- Copyright 2026 Finite Labs, LLC. All rights reserved. -->
+<!-- Copyright 2026 Control Pro. All rights reserved. -->
 
 <style>
 @media print {
@@ -19,12 +19,8 @@ ______________________________________________________________________
 
 # <span style="color:#660066">Overview</span>
 
-<!-- #ifndef DRIVERCENTRAL -->
-
 > DISCLAIMER: This software is neither affiliated with nor endorsed by either
 > Control4 or MQTT.
-
-<!-- #endif -->
 
 The MQTT Universal driver is a comprehensive solution for integrating MQTT
 devices and variables with Control4. It allows you to dynamically create relays,
@@ -42,9 +38,6 @@ integration with any MQTT-based system.
   - [Driver Installation](#driver-installation)
   - [Driver Setup](#driver-setup)
     - [Driver Properties](#driver-properties)
-      <!-- #ifdef DRIVERCENTRAL -->
-      - [Cloud Settings](#cloud-settings)
-      <!-- #endif -->
       - [Driver Settings](#driver-settings)
       - [Availability Settings](#availability-settings)
       - [Add Devices](#add-devices)
@@ -53,11 +46,6 @@ integration with any MQTT-based system.
       - [Item Configuration](#item-configuration)
   - [Connections](#connections)
   - [Programming](#programming)
-  <!-- #ifdef DRIVERCENTRAL -->
-- [Developer Information](#developer-information)
-
-<!-- #endif -->
-
 - [Support](#support)
 - [Changelog](#changelog)
 
@@ -107,20 +95,6 @@ integration with any MQTT-based system.
 ## Driver Setup
 
 ### Driver Properties
-
-<!-- #ifdef DRIVERCENTRAL -->
-
-#### Cloud Settings
-
-##### Cloud Status
-
-Displays the DriverCentral cloud license status.
-
-##### Automatic Updates
-
-Turns on/off the DriverCentral cloud automatic updates.
-
-<!-- #endif -->
 
 #### Driver Settings
 
@@ -369,45 +343,11 @@ Variable-type items (STRING, BOOL, NUMBER, FLOAT, TEMPERATURE, HUMIDITY) create
 Control4 variables that can be read in conditionals and written to trigger
 publishing to the command topic.
 
-<!-- #ifdef DRIVERCENTRAL -->
-
-# <span style="color:#660066">Developer Information</span>
-
-<p align="center">
-<img alt="Finite Labs" src="./images/finite-labs-logo.png" width="400"/>
-</p>
-
-Copyright © 2026 Finite Labs LLC
-
-All information contained herein is, and remains the property of Finite Labs LLC
-and its suppliers, if any. The intellectual and technical concepts contained
-herein are proprietary to Finite Labs LLC and its suppliers and may be covered
-by U.S. and Foreign Patents, patents in process, and are protected by trade
-secret or copyright law. Dissemination of this information or reproduction of
-this material is strictly forbidden unless prior written permission is obtained
-from Finite Labs LLC. For the latest information, please visit
-https://drivercentral.io/platforms/control4-drivers/utility/mqtt
-
-<!-- #endif -->
-
 # <span style="color:#660066">Support</span>
-
-<!-- #ifdef DRIVERCENTRAL -->
-
-If you have any questions or issues integrating this driver with Control4 or
-MQTT, you can contact us at
-[driver-support@finitelabs.com](mailto:driver-support@finitelabs.com) or
-call/text us at [+1 (949) 371-5805](tel:+19493715805).
-
-<!-- #else -->
 
 If you have any questions or issues integrating this driver with Control4, you
 can file an issue on GitHub:
 
 https://github.com/krishy2/control4-mqtt/issues/new
-
-<a href="https://www.buymeacoffee.com/derek.miller" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-<!-- #endif -->
 
 <!-- #embed-changelog -->

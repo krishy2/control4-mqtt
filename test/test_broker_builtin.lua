@@ -1,0 +1,332 @@
+-- Tests for the MQTT Broker driver's Built-in mode: the controller is the
+-- broker, MQTT devices connect over TCP, and child drivers (MQTT Light,
+-- MQTT Universal) use the same SUBSCRIBE / PUBLISH commands as in External
+-- mode.
+--
+-- C4:CreateTCPServer is faked here so the test needs no network.
+--
+-- Run from the repo root:
+--   make test
+-- or:
+--   ./test/run_test.sh test_broker_builtin.lua
+
+local T = require("testlib")
+require("c4_shim")
+local Codec = require("mqtt.server.codec")
+
+-------------------------------------------------------------------------------
+-- Fakes
+-------------------------------------------------------------------------------
+
+local proxyMsgs, deviceMsgs, events, attribs = {}, {}, {}, {}
+C4.SendToProxy = function(_, binding, command, params, kind)
+  proxyMsgs[#proxyMsgs + 1] = { binding = binding, command = command, params = params or {}, kind = kind }
+end
+C4.SendToDevice = function(_, deviceId, command, params)
+  deviceMsgs[#deviceMsgs + 1] = { deviceId = deviceId, command = command, params = params or {} }
+end
+C4.FireEvent = function(_, name)
+  events[#events + 1] = name
+end
+C4.SetPropertyAttribs = function(_, name, value)
+  attribs[name] = value
+end
+local propertyWrites = {}
+C4.UpdateProperty = function(_, name, value)
+  propertyWrites[name] = value
+end
+local realGetDriverConfigInfo = C4.GetDriverConfigInfo
+C4.GetDriverConfigInfo = function(c4, section)
+  if section == "minimum_os_version" then
+    return "3.3.0"
+  end
+  return realGetDriverConfigInfo(c4, section)
+end
+local mqttClients = 0
+C4.MQTT = function()
+  mqttClients = mqttClients + 1
+  local client = {}
+  setmetatable(client, {
+    __index = function()
+      return function()
+        return 0
+      end
+    end,
+  })
+  return client
+end
+
+--- Fake TCP server: Listen succeeds at once, tests call accept() to connect.
+local servers = {}
+C4.CreateTCPServer = function()
+  local srv = { closed = false }
+  function srv:Option()
+    return self
+  end
+  for _, name in ipairs({ "OnListen", "OnError", "OnAccept", "OnResolve" }) do
+    srv[name] = function(self, fn)
+      self[name .. "Fn"] = fn
+      return self
+    end
+  end
+  function srv:Listen(_, port)
+    self.port = port
+    servers[#servers + 1] = self
+    self.OnListenFn(self, { ip = "0.0.0.0", port = port })
+    return self
+  end
+  function srv:GetLocalAddress()
+    return { ip = "0.0.0.0", port = self.port }
+  end
+  function srv:Close()
+    self.closed = true
+    return self
+  end
+  return srv
+end
+
+--- A fake device on the network: feed() sends bytes, received holds decoded packets.
+local function accept(srv, name)
+  local client = { received = {}, closed = false, reader = Codec.reader() }
+  for _, n in ipairs({ "OnRead", "OnWrite", "OnDisconnect", "OnError" }) do
+    client[n] = function(self, fn)
+      self[n .. "Fn"] = fn
+      return self
+    end
+  end
+  function client:ReadUpTo()
+    return self
+  end
+  function client:Option()
+    return self
+  end
+  function client:GetRemoteAddress()
+    return { ip = "10.0.0." .. name, port = 50000 }
+  end
+  function client:Write(bytes)
+    for _, raw in ipairs((self.reader:feed(bytes))) do
+      self.received[#self.received + 1] = Codec.decode(raw.first, raw.body)
+    end
+    return self
+  end
+  function client:Close()
+    self.closed = true
+    return self
+  end
+  function client:feed(bytes)
+    self.OnReadFn(self, bytes)
+  end
+  function client:take()
+    local out = self.received
+    self.received = {}
+    return out
+  end
+  srv.OnAcceptFn(srv, client)
+  return client
+end
+
+local function last(list)
+  return list[#list]
+end
+
+local function childMessages()
+  local out = {}
+  for _, m in ipairs(deviceMsgs) do
+    if m.command == "MQTT_MESSAGE" then
+      out[#out + 1] = string.format("%d %s=%s", m.deviceId, m.params.topic, m.params.payload)
+    end
+  end
+  deviceMsgs = {}
+  return out
+end
+
+local function notifies(command)
+  local n = 0
+  for _, m in ipairs(proxyMsgs) do
+    if m.command == command then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-------------------------------------------------------------------------------
+-- Load the driver
+-------------------------------------------------------------------------------
+
+local xml = assert(io.open("drivers/mqtt_broker/driver.xml")):read("*a")
+for block in xml:gmatch("<property>(.-)</property>") do
+  Properties[block:match("<name>(.-)</name>")] = block:match("<default>(.-)</default>") or ""
+end
+Properties["Log Level"] = "2 - Warning"
+Properties["Automatic Updates"] = "Off"
+
+local loaded, loadErr = T.capture(function()
+  dofile("drivers/mqtt_broker/driver.lua")
+  OnDriverInit()
+  OnDriverLateInit()
+end)
+T.check("the driver loads and starts", loaded, loadErr)
+
+-------------------------------------------------------------------------------
+T.section("External mode stays the default")
+-------------------------------------------------------------------------------
+T.eq("Broker Mode defaults to External", Properties["Broker Mode"], "External")
+T.eq("no server is started", #servers, 0)
+T.eq("built-in properties are hidden", attribs["Listen Port"], 1)
+T.eq("external properties are shown", attribs["Broker Address"], 0)
+
+-------------------------------------------------------------------------------
+T.section("Switching to Built-in")
+-------------------------------------------------------------------------------
+proxyMsgs = {}
+Properties["Broker Mode"] = "Built-in"
+local switched, switchErr = T.capture(function()
+  OnPropertyChanged("Broker Mode")
+end)
+T.check("switching mode runs without error", switched, switchErr)
+local srv = last(servers)
+T.check("a server listens", srv ~= nil)
+T.eq("on port 3883", srv and srv.port, 3883)
+T.eq("children hear BROKER_CONNECTED", notifies("BROKER_CONNECTED"), 1)
+T.eq("Broker Connected event fires", last(events), "Broker Connected")
+T.eq("visibility flips", { attribs["Listen Port"], attribs["Broker Address"] }, { 0, 1 })
+T.contains("Driver Status", propertyWrites["Driver Status"], "Built-in broker on port 3883")
+
+local function connectDevice(name, will)
+  local dev = accept(srv, name)
+  dev:feed(Codec.connect({ clientId = "tasmota_" .. name, keepAlive = 30, will = will }))
+  dev:feed(Codec.subscribe(1, { { "cmnd/tasmota_" .. name .. "/#", 0 } }))
+  dev:take()
+  return dev
+end
+
+-------------------------------------------------------------------------------
+T.section("Device -> child driver")
+-------------------------------------------------------------------------------
+local LIGHT, UNIVERSAL = 101, 202
+T.capture(function()
+  ReceivedFromProxy(5001, "SUBSCRIBE", { topic = "stat/tasmota_1/RESULT", device_id = tostring(LIGHT) })
+  ReceivedFromProxy(5001, "SUBSCRIBE", { topic = "tele/tasmota_1/LWT", device_id = tostring(LIGHT) })
+end)
+T.eq("nothing to hand over yet", childMessages(), {})
+
+local dev1 = connectDevice("1", { topic = "tele/tasmota_1/LWT", payload = "Offline", retain = true })
+dev1:feed(Codec.publish("tele/tasmota_1/LWT", "Online", { retain = true }))
+dev1:feed(Codec.publish("stat/tasmota_1/RESULT", '{"POWER":"ON","Dimmer":40}'))
+dev1:feed(Codec.publish("tele/tasmota_1/SENSOR", "{}"))
+T.eq("subscribed topics reach the child, others do not", childMessages(), {
+  "101 tele/tasmota_1/LWT=Online",
+  '101 stat/tasmota_1/RESULT={"POWER":"ON","Dimmer":40}',
+})
+
+T.capture(function()
+  ReceivedFromProxy(5001, "SUBSCRIBE", { topic = "stat/tasmota_1/RESULT", device_id = tostring(UNIVERSAL) })
+end)
+T.eq("a second child gets the latest message at once", childMessages(), {
+  '202 stat/tasmota_1/RESULT={"POWER":"ON","Dimmer":40}',
+})
+
+-- A retained message published before any child subscribed
+local dev2 = connectDevice("2")
+dev2:feed(Codec.publish("tele/tasmota_2/LWT", "Online", { retain = true }))
+T.eq("not subscribed yet: nothing sent", childMessages(), {})
+T.capture(function()
+  ReceivedFromProxy(5001, "SUBSCRIBE", { topic = "tele/tasmota_2/LWT", device_id = tostring(LIGHT) })
+end)
+T.eq("subscribing hands over the retained message", childMessages(), { "101 tele/tasmota_2/LWT=Online" })
+local retainedFlag = nil
+T.capture(function()
+  ReceivedFromProxy(5001, "SUBSCRIBE", { topic = "tele/tasmota_2/LWT", device_id = "303" })
+end)
+retainedFlag = last(deviceMsgs) and last(deviceMsgs).params.retain
+T.eq("handed-over retained message is flagged retained", retainedFlag, "true")
+childMessages()
+
+-------------------------------------------------------------------------------
+T.section("Child driver -> device")
+-------------------------------------------------------------------------------
+T.capture(function()
+  ReceivedFromProxy(5001, "PUBLISH", { topic = "cmnd/tasmota_1/POWER1", payload = "ON", qos = "0", retain = "false" })
+end)
+local got = dev1:take()
+T.eq("the device gets the command", got[1] and (got[1].topic .. "=" .. got[1].payload), "cmnd/tasmota_1/POWER1=ON")
+T.eq("the other device does not", #dev2:take(), 0)
+
+T.capture(function()
+  ReceivedFromProxy(5001, "PUBLISH", { topic = "stat/tasmota_1/RESULT", payload = "from-driver" })
+end)
+T.eq("a driver's publish also reaches subscribed drivers, like an external broker", #childMessages(), 2)
+
+-------------------------------------------------------------------------------
+T.section("Last Will reaches the child driver")
+-------------------------------------------------------------------------------
+dev1.OnDisconnectFn(dev1, 104, "connection reset")
+T.eq("Offline is delivered", childMessages(), { "101 tele/tasmota_1/LWT=Offline" })
+
+-------------------------------------------------------------------------------
+T.section("Unsubscribe and unbinding")
+-------------------------------------------------------------------------------
+T.capture(function()
+  ReceivedFromProxy(5001, "UNSUBSCRIBE", { topic = "tele/tasmota_2/LWT", device_id = tostring(LIGHT) })
+  ReceivedFromProxy(5001, "UNSUBSCRIBE", { topic = "tele/tasmota_2/LWT", device_id = "303" })
+end)
+dev2:feed(Codec.publish("tele/tasmota_2/LWT", "Online", { retain = true }))
+T.eq("no messages after unsubscribing", childMessages(), {})
+T.capture(function()
+  OnBindingChanged(5001, "MQTT_BROKER", false, UNIVERSAL, 1)
+end)
+local dev3 = connectDevice("3")
+dev3:feed(Codec.publish("stat/tasmota_1/RESULT", "x"))
+T.eq("an unbound driver gets nothing", childMessages(), { "101 stat/tasmota_1/RESULT=x" })
+
+-------------------------------------------------------------------------------
+T.section("Status, actions, restart")
+-------------------------------------------------------------------------------
+proxyMsgs = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_STATUS", {})
+end)
+T.eq("GET_STATUS answers connected", notifies("BROKER_CONNECTED"), 1)
+local _, _, out = T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "PrintClients" })
+end)
+T.contains("Print Clients lists devices", out, "tasmota_2")
+_, _, out = T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "PrintReport" })
+end)
+T.contains("Print Report", out, "Connected Clients")
+
+local before = #servers
+proxyMsgs = {}
+T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "Reconnect" })
+end)
+T.eq("Reconnect restarts the server", #servers, before + 1)
+T.eq("the old server is closed", servers[before].closed, true)
+T.eq("connected devices are closed", dev2.closed, true)
+T.eq(
+  "children hear disconnected, then connected",
+  { notifies("BROKER_DISCONNECTED"), notifies("BROKER_CONNECTED") },
+  { 1, 1 }
+)
+
+-------------------------------------------------------------------------------
+T.section("Back to External")
+-------------------------------------------------------------------------------
+local srvBuiltIn = last(servers)
+Properties["Broker Mode"] = "External"
+Properties["Broker Address"] = "192.168.1.5"
+T.capture(function()
+  OnPropertyChanged("Broker Mode")
+end)
+T.eq("the built-in server is closed", srvBuiltIn.closed, true)
+T.check("an MQTT client is created", mqttClients >= 1)
+T.eq("visibility flips back", { attribs["Listen Port"], attribs["Broker Address"] }, { 1, 0 })
+proxyMsgs = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_STATUS", {})
+end)
+T.eq("not connected until the external broker answers", notifies("BROKER_DISCONNECTED"), 1)
+
+T.finish()

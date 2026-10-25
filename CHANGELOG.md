@@ -29,6 +29,23 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
   temperature, full color (RGB, Hex, HSB, HS or XY), an RGBW white channel and
   device-side fades. Works with separate plain topics (Tasmota, ESPHome) or a
   single JSON state/command topic (Zigbee2MQTT).
+- Added a built-in MQTT broker to the MQTT Broker driver. With **Broker Mode**
+  set to `Built-in`, the controller is the broker: Tasmota and other MQTT
+  devices connect to it on port 3883, with no separate broker needed. The MQTT
+  Light and MQTT Universal drivers work the same in both modes. New actions
+  Print Clients, Print Retained, Print Report and Reset Statistics show what is
+  connected.
+- Added State Request Topic to the MQTT Light driver. It asks the device for its
+  full state when the broker connects and when the device comes online, so a
+  light shows the right state after a controller restart.
+
+### Changed
+
+- The MQTT drivers are now published by Control Pro and update from
+  github.com/krishy2/control4-mqtt. DriverCentral licensing has been removed.
+- The MQTT Light documentation reads the Tasmota power state from
+  `stat/<topic>/RESULT` and explains `POWER<n>` for Tasmota devices with more
+  than one load.
 
 ### Fixed
 

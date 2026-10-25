@@ -500,4 +500,57 @@ T.capture(function()
 end)
 T.eq("a proxy command is published", published("cmnd/x/Dimmer"), { "10" })
 
+-------------------------------------------------------------------------------
+T.section("State request when the broker connects or the device comes online")
+-------------------------------------------------------------------------------
+local fakeNow = 1000000
+local realGetTime = C4.GetTime
+C4.GetTime = function()
+  return fakeNow
+end
+Properties["State Request Topic"] = "cmnd/x/STATE"
+Properties["State Request Payload"] = ""
+Properties["Availability Topic"] = "tele/x/LWT"
+Properties["Payload Available"] = "Online"
+Properties["Payload Not Available"] = "Offline"
+T.capture(function()
+  OnPropertyChanged("Availability Topic")
+end)
+
+reset()
+T.capture(function()
+  ReceivedFromProxy(5002, "BROKER_CONNECTED", {})
+end)
+T.eq("broker connected: state is requested", published("cmnd/x/STATE"), { "" })
+
+fakeNow = fakeNow + 500
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "tele/x/LWT", payload = "Online" })
+end)
+T.eq("Online right after: merged into the same request", #published("cmnd/x/STATE"), 1)
+
+fakeNow = fakeNow + 60000
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "tele/x/LWT", payload = "Online" })
+end)
+T.eq("Online again while already online: no request", #published("cmnd/x/STATE"), 1)
+
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "tele/x/LWT", payload = "Offline" })
+end)
+fakeNow = fakeNow + 5000
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "tele/x/LWT", payload = "Online" })
+end)
+T.eq("device back online: state is requested again", #published("cmnd/x/STATE"), 2)
+
+reset()
+Properties["State Request Topic"] = ""
+fakeNow = fakeNow + 60000
+T.capture(function()
+  ReceivedFromProxy(5002, "BROKER_CONNECTED", {})
+end)
+T.eq("no State Request Topic: nothing is sent", #published("cmnd/x/STATE"), 0)
+C4.GetTime = realGetTime
+
 T.finish()

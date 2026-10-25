@@ -220,9 +220,27 @@ Properties["Listen Port"] = tostring(PORT)
 Properties["Max Clients"] = os.getenv("MAX_CLIENTS") or Properties["Max Clients"]
 Properties["Log Mode"] = "Print"
 Properties["Log Level"] = os.getenv("LOG_LEVEL") or "2 - Warning"
+-- Extra properties, e.g. PROPS="Broker Mode=Built-in;Automatic Updates=Off"
+for pair in (os.getenv("PROPS") or ""):gmatch("[^;]+") do
+  local k, v = pair:match("^%s*(.-)%s*=%s*(.-)%s*$")
+  if k then
+    Properties[k] = v
+  end
+end
 -- C4:UpdateProperty is a stub in the shim; keep the values so the report shows them.
 C4.UpdateProperty = function(_, name, value)
   Properties[name] = value
+end
+-- The shim has no driver config; drivers check the OS version against it.
+local realConfigInfo = C4.GetDriverConfigInfo
+C4.GetDriverConfigInfo = function(c4, section)
+  if section == "minimum_os_version" then
+    return "3.3.0"
+  end
+  return realConfigInfo(c4, section)
+end
+C4.FireEvent = C4.FireEvent or function(_, name)
+  print("run_local: event " .. tostring(name))
 end
 
 dofile(dir .. "driver.lua")
