@@ -18,9 +18,7 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
-<!-- #ifndef DRIVERCENTRAL -->
-
-## Unreleased
+## v2026102500 - 2026-10-25
 
 ### Added
 
@@ -37,8 +35,6 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
   contained: MQTT General temperature sensor items now update a bound
   thermostat, and sensor and number variable items ignore `nan` and `inf`
   payloads, keeping the last good value.
-
-<!-- #endif -->
 
 ## v20261030 - 2026-10-25
 
