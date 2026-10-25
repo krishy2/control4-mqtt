@@ -148,6 +148,17 @@ function Shelly.build(info, prefix, config)
     end
     return a.index < b.index
   end)
+  -- Inputs: button-type ones become MQTT General events
+  local inputs = {}
+  for key, cfg in pairs(type(config) == "table" and config or {}) do
+    local index = tostring(key):match("^input:(%d+)$")
+    if index and type(cfg) == "table" then
+      inputs[#inputs + 1] = { key = key, index = tonumber(index), type = text(cfg.type) or "", name = text(cfg.name) }
+    end
+  end
+  table.sort(inputs, function(a, b)
+    return a.index < b.index
+  end)
   local sys = type(config) == "table" and type(config.sys) == "table" and config.sys or {}
   local device = type(sys.device) == "table" and sys.device or {}
   return {
@@ -163,6 +174,7 @@ function Shelly.build(info, prefix, config)
     profile = info.profile,
     ip = "",
     components = components,
+    inputs = inputs,
   }
 end
 
@@ -204,7 +216,71 @@ function Shelly.summary(dev)
   for _, l in ipairs(Shelly.loads(dev)) do
     loads[#loads + 1] = { id = l.id, label = l.label }
   end
-  return { type = "shelly", mac = dev.mac, topic = dev.topic, name = dev.name, ip = dev.ip, loads = loads }
+  return {
+    type = "shelly",
+    mac = dev.mac,
+    topic = dev.topic,
+    name = dev.name,
+    ip = dev.ip,
+    loads = loads,
+    buttons = #Shelly.buttons(dev),
+  }
+end
+
+--- Shelly button events, without btn_down/btn_up (sent with every press).
+Shelly.BUTTON_EVENTS = "single_push,double_push,triple_push,long_push"
+
+--- Button-type inputs, as MQTT General Events: NotifyEvent on
+--- <prefix>/events/rpc, {"params":{"events":[{"component":"input:0","event":"single_push"}]}}.
+--- @param dev table
+--- @return table[] { id, label, stateTopic, valuePath, eventTypeFilter }
+function Shelly.buttons(dev)
+  local out = {}
+  local count = 0
+  for _, input in ipairs(dev.inputs or {}) do
+    if input.type == "button" then
+      count = count + 1
+    end
+  end
+  for _, input in ipairs(dev.inputs or {}) do
+    if input.type == "button" then
+      local label = count > 1 and string.format("Input %d", input.index + 1) or "Input"
+      if input.name and input.name ~= dev.name then
+        label = input.name
+      end
+      out[#out + 1] = {
+        id = input.key,
+        label = label,
+        stateTopic = dev.topic .. "/events/rpc",
+        valuePath = "$.params.events[?(@.component=='" .. input.key .. "')].event",
+        eventTypeFilter = Shelly.BUTTON_EVENTS,
+      }
+    end
+  end
+  return out
+end
+
+--- Why inputs on the device do not show up as buttons.
+function Shelly.buttonNotes(dev)
+  local notes = {}
+  if dev.inputs == nil then
+    notes[#notes + 1] = dev.name .. ": inputs not read yet; run Find Shelly Devices on the MQTT Broker driver."
+    return notes
+  end
+  local switches = 0
+  for _, input in ipairs(dev.inputs) do
+    if input.type == "switch" then
+      switches = switches + 1
+    end
+  end
+  if switches > 0 then
+    notes[#notes + 1] = string.format(
+      "%s has %d input(s) set to Switch; set them to Button on the Shelly to use them as events.",
+      dev.name,
+      switches
+    )
+  end
+  return notes
 end
 
 --- Where a light's state requests are answered: <src>/rpc.

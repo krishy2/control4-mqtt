@@ -20,6 +20,8 @@ local values = require("lib.values")
 -- MQTT entity modules
 local AutoBind = require("mqtt.autobind")
 local MqttDevice = require("mqtt.entities.device")
+local Tasmota = require("mqtt.tasmota")
+local Shelly = require("mqtt.shelly")
 local MqttRelay = require("mqtt.entities.relay")
 local MqttContact = require("mqtt.entities.contact")
 local MqttButton = require("mqtt.entities.button")
@@ -663,6 +665,8 @@ function OnDriverLateInit()
   -- Update property visibility
   updateAvailabilityPropertyVisibility()
   updateItemProperties()
+  -- Filled in when the broker sends its device list
+  C4:UpdatePropertyList("Discovered Device", SELECT_OPTION, SELECT_OPTION)
 
   connectToBroker()
 
@@ -813,6 +817,144 @@ OPC.Add_Float_Variable = createAddItemHandler("FLOAT", "Add Float Variable")
 OPC.Add_Temperature_Variable = createAddItemHandler("TEMPERATURE", "Add Temperature Variable")
 OPC.Add_Humidity_Variable = createAddItemHandler("HUMIDITY", "Add Humidity Variable")
 
+-----------------------------------------------------------------------
+-- Discovered devices: an Event for each button of a Tasmota or Shelly
+-----------------------------------------------------------------------
+
+--- Dropdown label -> MAC
+local discoveredChoices = {}
+--- The device picked, waiting for its details from the broker
+local pendingDiscovered = nil
+
+local function requestDiscoveredList()
+  SendToProxy(MQTT_BINDING, "GET_TASMOTA_DEVICES", { device_id = tostring(C4:GetDeviceID()) })
+end
+
+local function updateDiscoveredList()
+  local labels = {}
+  for label in pairs(discoveredChoices) do
+    labels[#labels + 1] = label
+  end
+  table.sort(labels, function(a, b)
+    return a:lower() < b:lower()
+  end)
+  table.insert(labels, 1, SELECT_OPTION)
+  C4:UpdatePropertyList("Discovered Device", table.concat(labels, ","), SELECT_OPTION)
+end
+
+--- The Event item with this name, or nil.
+local function findEventByName(name)
+  for _, item in pairs(getItems()) do
+    if item.name == name and item.itemType == "EVENT" then
+      return tostring(item.id)
+    end
+  end
+  return nil
+end
+
+--- Create (or update) an Event for each button of a discovered device.
+--- @param dev table the broker's device record (Tasmota or Shelly)
+--- @return integer count events created or updated
+local function addDiscoveredButtons(dev)
+  local codec = dev.type == "shelly" and Shelly or Tasmota
+  local buttons = codec.buttons(dev)
+  if #buttons == 0 then
+    local notes = codec.buttonNotes(dev)
+    log:print(
+      "No buttons found on %s (%s).%s",
+      tostring(dev.name),
+      tostring(dev.topic),
+      IsEmpty(notes) and "" or (" " .. table.concat(notes, " "))
+    )
+    return 0
+  end
+  local count, firstId = 0, nil
+  for _, button in ipairs(buttons) do
+    local name = (tostring(dev.name) .. " " .. button.label):gsub(",", " ")
+    local itemId = findEventByName(name)
+    local created = itemId == nil
+    if created then
+      itemId = addItem(name, "EVENT")
+    end
+    if itemId == nil then
+      log:print("Skipped '%s': an item of another type already has that name", name)
+    else
+      updateItemConfig(itemId, {
+        stateTopic = button.stateTopic,
+        valuePath = button.valuePath,
+        eventTypeFilter = button.eventTypeFilter,
+      })
+      log:print("%s event '%s': %s, %s", created and "Created" or "Updated", name, button.stateTopic, button.valuePath)
+      count = count + 1
+      firstId = firstId or itemId
+    end
+  end
+  for _, note in ipairs(codec.buttonNotes(dev)) do
+    log:print(note)
+  end
+  updateItemProperties()
+  local first = firstId and getItem(firstId)
+  if first then
+    UpdateProperty("Configure Item", first.displayName, true)
+  end
+  return count
+end
+
+function OPC.Discovered_Device(propertyValue)
+  log:trace("OPC.Discovered_Device('%s')", propertyValue)
+  if not gInitialized or IsEmpty(propertyValue) or propertyValue == SELECT_OPTION then
+    return
+  end
+  local mac = discoveredChoices[propertyValue]
+  if mac == nil then
+    return
+  end
+  pendingDiscovered = mac
+  SendToProxy(MQTT_BINDING, "GET_TASMOTA_DEVICE", { device_id = tostring(C4:GetDeviceID()), mac = mac })
+  -- Back to (Select), so the same device can be picked again later.
+  UpdateProperty("Discovered Device", SELECT_OPTION)
+end
+
+--- The broker's list of discovered devices.
+function EC.TASMOTA_DEVICES(tParams)
+  log:trace("EC.TASMOTA_DEVICES()")
+  local ok, list = pcall(JSON.decode, JSON, Select(tParams, "devices") or "[]")
+  if not ok or type(list) ~= "table" then
+    log:warn("Could not read the discovered device list")
+    return
+  end
+  discoveredChoices = {}
+  for _, dev in ipairs(list) do
+    local n = tonumber(dev.buttons) or 0
+    local label =
+      string.format("%s [%s] %s", tostring(dev.name), tostring(dev.topic), n == 1 and "1 button" or (n .. " buttons"))
+    discoveredChoices[(label:gsub(",", " "))] = dev.mac
+  end
+  updateDiscoveredList()
+end
+
+--- One device in full, after it was picked.
+function EC.TASMOTA_DEVICE(tParams)
+  local mac = Select(tParams, "mac")
+  if pendingDiscovered == nil or mac ~= pendingDiscovered then
+    return
+  end
+  pendingDiscovered = nil
+  local ok, dev = pcall(JSON.decode, JSON, Select(tParams, "device") or "")
+  if not ok or type(dev) ~= "table" then
+    log:print("The MQTT Broker does not know that device any more")
+    return
+  end
+  addDiscoveredButtons(dev)
+end
+
+--- A device appeared, changed or disappeared.
+function RFP.TASMOTA_DEVICES_CHANGED(idBinding, strCommand, tParams, args)
+  if idBinding == MQTT_BINDING then
+    requestDiscoveredList()
+  end
+end
+
 -- Item management handlers
 function OPC.Remove_Item(propertyValue)
   log:trace("OPC.Remove_Item('%s')", propertyValue)
@@ -906,6 +1048,7 @@ function RFP.BROKER_CONNECTED(idBinding, strCommand, tParams, args)
 
   MqttDevice:setConnected(true)
   subscribeAllEntities()
+  requestDiscoveredList()
 end
 
 function RFP.BROKER_DISCONNECTED(idBinding, strCommand, tParams, args)

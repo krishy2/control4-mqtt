@@ -378,6 +378,20 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102508 - 2026-10-25
+
+### Added
+
+- MQTT General: a Discovered Device list with the Tasmota and Shelly devices the
+  MQTT Broker driver has found. Picking one creates an Event for each of its
+  buttons (Tasmota buttons with `SetOption73 1`, switches with `SetOption114 1`,
+  Shelly inputs set to Button), with the State Topic, Value Path and Event Type
+  Filter filled in.
+- MQTT Broker: Tasmota and Shelly discovery also records buttons and inputs;
+  Shelly devices with inputs only (Plus i4) are listed too.
+- JSONPath value paths accept filters such as
+  `$.params.events[?(@.component=='input:0')].event` and quoted keys.
+
 ## v2026102507 - 2026-10-25
 
 ### Fixed

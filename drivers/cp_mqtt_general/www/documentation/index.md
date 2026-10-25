@@ -157,6 +157,34 @@ Value Path are configured.
 
 #### Add Devices
 
+##### Discovered Device
+
+The Tasmota and Shelly devices the MQTT Broker driver has found, with how many
+buttons each has, for example
+`Hall Panel [shellyplusi4-c4d8d5a1b2c3] 2 buttons`. Picking one creates an
+[Event](#add-event) for each button, named after the device and the button
+(`Hall Panel Scene`, `Hall Button 1`), with its State Topic, Value Path and
+Event Type Filter filled in. Bind each Event to a keypad button or a light, or
+use it in programming. Picking the same device again updates its Events instead
+of adding new ones.
+
+What counts as a button:
+
+| Device       | Button                          | Setting needed on the device                            | Event types                                               |
+| ------------ | ------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
+| Tasmota      | each button (`Button<n>`)       | `SetOption73 1` (buttons no longer switch the relays)   | `SINGLE`, `DOUBLE`, `TRIPLE`, `QUAD`, `PENTA`, `HOLD`     |
+| Tasmota      | each switch input (`Switch<n>`) | `SetOption114 1` (switches no longer switch the relays) | the switch's actions (`ON`, `OFF`, `TOGGLE`, `HOLD`, ...) |
+| Shelly Gen2+ | each input set to **Button**    | Input type **Button** in the Shelly's settings          | `single_push`, `double_push`, `triple_push`, `long_push`  |
+
+Tasmota events arrive on `stat/<topic>/RESULT` (value path `$.Button1.Action`),
+Shelly events on `<prefix>/events/rpc` (value path
+`$.params.events[?(@.component=='input:0')].event`). The Event Type Filter keeps
+one press from triggering more than once (Shelly also sends `btn_down` and
+`btn_up`); clear or narrow it to react to other actions. When a device has
+buttons that do not qualify yet, the Lua output says which setting to change.
+After changing a Shelly input to Button, run **Find Shelly Devices** on the MQTT
+Broker driver so the list picks it up.
+
 ##### Add Relay
 
 Enter a name to create a new relay. This creates a RELAY binding that can be
@@ -277,19 +305,21 @@ These appear when an event is selected:
 These properties appear when a State Topic is configured:
 
 - **Value Path** - JSONPath expression to extract a value from a JSON payload.
-  Leave empty to use the raw payload. Supports dot notation for nested fields
-  and array indices.
+  Leave empty to use the raw payload. Supports dot notation for nested fields,
+  array indices, quoted keys (`$['a b']`) and filters that pick the first array
+  element whose field has a value (`$.events[?(@.component=='input:0')].event`).
 - **Value Path Result** (read-only) - Shows the extracted value or an error
   message. Only appears when Value Path is configured.
 
 **JSONPath Examples:**
 
-| Payload                         | Value Path            | Result |
-| ------------------------------- | --------------------- | ------ |
-| `{"temperature": 72.5}`         | `$.temperature`       | `72.5` |
-| `{"sensors": {"temp": 68}}`     | `$.sensors.temp`      | `68`   |
-| `{"readings": [{"value": 42}]}` | `$.readings[0].value` | `42`   |
-| `{"data": [10, 20, 30]}`        | `$.data[1]`           | `20`   |
+| Payload                                           | Value Path                   | Result        |
+| ------------------------------------------------- | ---------------------------- | ------------- |
+| `{"temperature": 72.5}`                           | `$.temperature`              | `72.5`        |
+| `{"sensors": {"temp": 68}}`                       | `$.sensors.temp`             | `68`          |
+| `{"readings": [{"value": 42}]}`                   | `$.readings[0].value`        | `42`          |
+| `{"data": [10, 20, 30]}`                          | `$.data[1]`                  | `20`          |
+| `{"events": [{"id": 1, "event": "single_push"}]}` | `$.events[?(@.id==1)].event` | `single_push` |
 
 ##### Common Properties
 

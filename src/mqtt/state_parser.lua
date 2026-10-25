@@ -12,8 +12,73 @@
 --- @class StateParser
 local StateParser = {}
 
+--- Split a JSONPath (without "$") into steps: { key = "a" }, { index = 0 }
+--- or { filter = { path = { "component" }, value = "input:0" } }.
+--- @return table[]|nil steps nil when the path cannot be read
+local function jsonPathSteps(path)
+  local steps = {}
+  local i, n = 1, #path
+  while i <= n do
+    local c = path:sub(i, i)
+    if c == "." then
+      i = i + 1
+    elseif c == "[" then
+      local close
+      if path:sub(i, i + 1) == "[?" then
+        -- [?(@.a.b=='x')] or [?(@.a=="x")] or [?(@.a==3)]
+        local expr, rest = path:match("^%[%?%((.-)%)%](.*)$", i)
+        if expr == nil then
+          return nil
+        end
+        local lhs, rhs = expr:match("^%s*@%.([%w_%.]+)%s*==%s*(.-)%s*$")
+        if lhs == nil then
+          return nil
+        end
+        local value = rhs:match("^'(.*)'$") or rhs:match('^"(.*)"$')
+        if value == nil then
+          value = tonumber(rhs)
+          if value == nil then
+            return nil
+          end
+        end
+        local keys = {}
+        for k in lhs:gmatch("[^.]+") do
+          keys[#keys + 1] = k
+        end
+        steps[#steps + 1] = { filter = { path = keys, value = value } }
+        i = n - #rest + 1
+      else
+        close = path:find("]", i, true)
+        if close == nil then
+          return nil
+        end
+        local inner = path:sub(i + 1, close - 1)
+        local quoted = inner:match("^'(.*)'$") or inner:match('^"(.*)"$')
+        if quoted then
+          steps[#steps + 1] = { key = quoted }
+        elseif inner:match("^%d+$") then
+          steps[#steps + 1] = { index = tonumber(inner) }
+        else
+          return nil
+        end
+        i = close + 1
+      end
+    else
+      local j = i
+      while j <= n and path:sub(j, j) ~= "." and path:sub(j, j) ~= "[" do
+        j = j + 1
+      end
+      steps[#steps + 1] = { key = path:sub(i, j - 1) }
+      i = j
+    end
+  end
+  return steps
+end
+
 --- Extract a value from a JSON table using JSONPath syntax.
---- Supports `$` root prefix, dot notation, and bracket array indexing.
+--- Supports `$` root prefix, dot notation, bracket array indexing, quoted
+--- bracket keys and a filter that picks the first array element whose field
+--- equals a value.
 ---
 --- @param jsonTable table The parsed JSON table.
 --- @param jsonPath string JSONPath expression (e.g., "$.state.power" or "$.sensors[0].temp").
@@ -26,6 +91,8 @@ local StateParser = {}
 --- StateParser.extractJsonPath(t, "$.sensors[0].temp") --> 72
 --- StateParser.extractJsonPath(t, "$")                --> t (root)
 --- StateParser.extractJsonPath(t, "$.missing")        --> nil
+--- -- Shelly NotifyEvent: the event of one input
+--- StateParser.extractJsonPath(e, "$.params.events[?(@.component=='input:0')].event")
 --- ```
 function StateParser.extractJsonPath(jsonTable, jsonPath)
   if not jsonPath or jsonPath == "" or jsonPath == "$" then
@@ -36,28 +103,37 @@ function StateParser.extractJsonPath(jsonTable, jsonPath)
     return nil
   end
 
-  local path = string.match(jsonPath, "^%$%.?(.*)$") or ""
-  if path == "" then
+  local path = string.match(jsonPath, "^%$(.*)$") or ""
+  if path == "" or path == "." then
     return jsonTable
   end
 
+  local steps = jsonPathSteps(path)
+  if steps == nil then
+    return nil
+  end
   local current = jsonTable
-  for part in string.gmatch(path, "[^.]+") do
-    if current == nil or type(current) ~= "table" then
+  for _, step in ipairs(steps) do
+    if type(current) ~= "table" then
       return nil
     end
-
-    local field, index = string.match(part, "^([^%[]*)%[(%d+)%]$")
-    if index then
-      if field and field ~= "" then
-        current = current[field]
-        if current == nil or type(current) ~= "table" then
-          return nil
+    if step.key ~= nil then
+      current = current[step.key]
+    elseif step.index ~= nil then
+      current = current[step.index + 1] -- Lua 1-indexed
+    else
+      local found = nil
+      for _, element in ipairs(current) do
+        local v = element
+        for _, k in ipairs(step.filter.path) do
+          v = type(v) == "table" and v[k] or nil
+        end
+        if v ~= nil and (v == step.filter.value or tostring(v) == tostring(step.filter.value)) then
+          found = element
+          break
         end
       end
-      current = current[tonumber(index) + 1] -- Lua 1-indexed
-    else
-      current = current[part]
+      current = found
     end
   end
 

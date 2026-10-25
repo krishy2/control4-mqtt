@@ -110,6 +110,19 @@ function Tasmota.parse(payload)
     local name = type(t.fn) == "table" and str(t.fn[i]) or nil
     fn[i] = name or ""
   end
+  -- Buttons (btn: 1 = present) and switches (swc: switch mode, -1 = none), with switch names
+  local buttons, switches = {}, {}
+  for i, v in ipairs(type(t.btn) == "table" and t.btn or {}) do
+    if num(v) == 1 then
+      buttons[#buttons + 1] = i
+    end
+  end
+  for i, v in ipairs(type(t.swc) == "table" and t.swc or {}) do
+    if num(v) ~= nil and num(v) >= 0 then
+      local swn = type(t.swn) == "table" and str(t.swn[i]) or nil
+      switches[#switches + 1] = { index = i, name = swn }
+    end
+  end
   local tp = type(t.tp) == "table" and t.tp or {}
   local state = type(t.state) == "table" and t.state or {}
 
@@ -135,6 +148,10 @@ function Tasmota.parse(payload)
     so17 = opt(17),
     so68 = opt(68),
     so82 = opt(82),
+    so73 = opt(73),
+    so114 = opt(114),
+    buttons = buttons,
+    switches = switches,
   }
 end
 
@@ -319,7 +336,77 @@ function Tasmota.summary(dev)
   for _, l in ipairs(Tasmota.loads(dev)) do
     loads[#loads + 1] = { id = l.id, label = l.label }
   end
-  return { mac = dev.mac, topic = dev.topic, name = dev.name, ip = dev.ip, loads = loads }
+  return {
+    mac = dev.mac,
+    topic = dev.topic,
+    name = dev.name,
+    ip = dev.ip,
+    loads = loads,
+    buttons = #Tasmota.buttons(dev),
+  }
+end
+
+--- Tasmota button actions (SetOption73 1).
+Tasmota.BUTTON_ACTIONS = "SINGLE,DOUBLE,TRIPLE,QUAD,PENTA,HOLD"
+
+--- Buttons and switches that publish their presses, as MQTT General Events.
+--- Buttons publish only when decoupled from the relays (SetOption73 1), switches
+--- only when detached (SetOption114 1); both on stat/<topic>/RESULT as
+--- {"Button1":{"Action":"SINGLE"}} or {"Switch1":{"Action":"ON"}}.
+--- @param dev table
+--- @return table[] { id, label, stateTopic, valuePath, eventTypeFilter }
+function Tasmota.buttons(dev)
+  local out = {}
+  local result = Tasmota.topicFor(dev, 2, "RESULT")
+  if dev.so73 == 1 then
+    for _, i in ipairs(dev.buttons or {}) do
+      out[#out + 1] = {
+        id = "button" .. i,
+        label = "Button " .. i,
+        stateTopic = result,
+        valuePath = "$.Button" .. i .. ".Action",
+        eventTypeFilter = Tasmota.BUTTON_ACTIONS,
+      }
+    end
+  end
+  if dev.so114 == 1 then
+    for _, sw in ipairs(dev.switches or {}) do
+      local label = "Switch " .. sw.index
+      if sw.name and sw.name ~= "" and sw.name ~= label and sw.name ~= "Switch" .. sw.index then
+        label = sw.name
+      end
+      out[#out + 1] = {
+        id = "switch" .. sw.index,
+        label = label,
+        stateTopic = result,
+        valuePath = "$.Switch" .. sw.index .. ".Action",
+        eventTypeFilter = "",
+      }
+    end
+  end
+  return out
+end
+
+--- Why buttons on the device do not show up, if they would with a setting changed.
+--- @param dev table
+--- @return string[]
+function Tasmota.buttonNotes(dev)
+  local notes = {}
+  if dev.so73 ~= 1 and #(dev.buttons or {}) > 0 then
+    notes[#notes + 1] = string.format(
+      "%s has %d button(s) that control its relays; run SetOption73 1 on it to use them as events.",
+      dev.name,
+      #dev.buttons
+    )
+  end
+  if dev.so114 ~= 1 and #(dev.switches or {}) > 0 then
+    notes[#notes + 1] = string.format(
+      "%s has %d switch input(s) that control its relays; run SetOption114 1 on it to use them as events.",
+      dev.name,
+      #dev.switches
+    )
+  end
+  return notes
 end
 
 --- MQTT Light property values for one load of a device.

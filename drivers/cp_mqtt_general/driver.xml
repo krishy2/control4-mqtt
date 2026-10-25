@@ -122,6 +122,11 @@
         <default>Add Devices</default>
       </property>
       <property>
+        <name>Discovered Device</name>
+        <type>DYNAMIC_LIST</type>
+        <description>Pick a Tasmota or Shelly found by the MQTT Broker: an Event is created for each of its buttons, with its MQTT settings filled in</description>
+      </property>
+      <property>
         <name>Add Relay</name>
         <type>STRING</type>
         <default/>
