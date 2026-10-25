@@ -312,6 +312,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102501 - 2026-10-25
+
+### Fixed
+
+- Fixed automatic updates missing a new release. The updater took the first
+  release GitHub listed as the newest, but GitHub does not list releases in
+  version order (v20261030 came before v2026102500), so controllers stayed on
+  the old drivers. It now picks the release with the highest version.
+
 ## v2026102500 - 2026-10-25
 
 ### Added

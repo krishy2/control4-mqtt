@@ -55,8 +55,8 @@ jobs:
         with:
           generate_release_notes: true
           # A suffixed tag (v20260918-rc1) publishes as a pre-release, which only
-          # drivers on the Prerelease update channel pick up. The updater orders by
-          # the date alone, so the final has to be dated after its pre-releases.
+          # drivers on the Prerelease update channel pick up. The updater takes the
+          # highest version, so the final has to be numbered after its pre-releases.
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/oss/c4z/*.c4z

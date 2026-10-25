@@ -28,7 +28,10 @@ function GitHubUpdater:new()
   return instance
 end
 
---- Retrieve the latest release from a GitHub repository.
+--- Retrieve the latest release from a GitHub repository: the one with the
+--- highest version. GitHub's list is not in version order (it sorts tag names
+--- as text, so v20261030 comes before v2026102500), so every release is
+--- compared rather than taking the first.
 --- @param repo string The GitHub repository, in the format "owner/repo".
 --- @param includePrereleases? boolean If true, includes pre-releases (optional).
 --- @return Deferred<table|nil, string> latestRelease Deferred resolving to the latest release table, or rejected with an error message.
@@ -39,16 +42,22 @@ function GitHubUpdater:getLatestRelease(repo, includePrereleases)
     return reject("repo name is required")
   end
   return http:get("https://api.github.com/repos/" .. repo .. "/releases", DEFAULT_HEADERS):next(function(response)
-    for _, release in pairs(response.body or {}) do
+    local latest = nil
+    for _, release in ipairs(response.body or {}) do
       local releaseVersion, err = version(release.tag_name)
       if IsEmpty(err) then
         if not release.draft and (toboolean(includePrereleases) or not release.prerelease) then
-          release.version = releaseVersion
-          return release
+          if latest == nil or releaseVersion > latest.version then
+            release.version = releaseVersion
+            latest = release
+          end
         end
       else
         log:warn("repo %s release '%s' has an invalid tag version '%s'", repo, release.name, release.tag_name)
       end
+    end
+    if latest ~= nil then
+      return latest
     end
     return reject(string.format("repo %s does not have any valid releases", repo))
   end, function(response)
