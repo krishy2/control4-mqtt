@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Pick the driver version for a local build so every build is newer than the last.
 
-Versions stay in the YYYYMMDD integer form the GitHub updater compares against
-release tags (vYYYYMMDD). A build gets today's date, or one more than the last
-version built from this checkout when that is already today or later, so two
-builds on the same day never share a version and Composer always sees an update.
+Versions are YYYYMMDDNN integers: the date plus a two-digit build number for that
+day (00, 01, ...), which the GitHub updater compares against release tags
+(vYYYYMMDDNN). A build gets today's date with 00, or one more than the last
+version built from this checkout when that is already today or later, so builds
+on the same day never share a version and Composer always sees an update.
+Older 8-digit versions (YYYYMMDD) are always lower, so they update cleanly.
 
 Usage:
   driver_version.py next <state-file>            # print the version to use
@@ -24,7 +26,7 @@ def last_built(state: Path) -> int:
 
 
 def next_version(state: Path) -> int:
-    today = int(datetime.date.today().strftime("%Y%m%d"))
+    today = int(datetime.date.today().strftime("%Y%m%d")) * 100
     return max(today, last_built(state) + 1)
 
 

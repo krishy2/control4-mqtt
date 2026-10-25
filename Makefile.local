@@ -1,9 +1,10 @@
 # Project-specific additions to the template Makefile (included at its end).
 
 # ─── Driver version ──────────────────────────────────────────────────────────
-# Every local build gets a higher driver version than the previous one: today's
-# date (YYYYMMDD), or the last built version + 1 if that is already today or
-# later. The last version is kept in dist/ (git-ignored), so it is per checkout.
+# Every local build gets a higher driver version than the previous one:
+# YYYYMMDDNN, today's date with build number 00, or the last built version + 1
+# if that is already today or later (01, 02, ... on the same day). The last
+# version is kept in dist/ (git-ignored), so it is per checkout.
 #
 # Only replaces the template's default. A DRIVER_VERSION passed on the command
 # line or in the environment (the CI tag build does this) is left alone.

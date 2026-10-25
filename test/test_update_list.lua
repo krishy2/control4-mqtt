@@ -43,4 +43,12 @@ T.check("no listed driver is missing from drivers/", next(listed) == nil, tostri
 T.section("updates come from this repository")
 T.contains("DRIVER_GITHUB_REPO", src, 'DRIVER_GITHUB_REPO = "krishy2/control4-mqtt"')
 
+T.section("Version numbers the updater compares (YYYYMMDDNN)")
+local version = require("version")
+T.check("a 10-digit release is newer than the old 8-digit versions", version("v2026102500") > version("20261032"))
+T.check("a second release the same day is newer", version("v2026102501") > version("2026102500"))
+T.check("the next day is newer than the last number of a day", version("v2026102600") > version("2026102599"))
+T.check("the installed version is not an update to itself", not (version("v2026102500") > version("2026102500")))
+T.check("versions fit Control4's 32-bit version field until 2147", 2147123199 < 2147483647)
+
 T.finish()
