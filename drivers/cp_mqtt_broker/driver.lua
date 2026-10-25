@@ -53,6 +53,11 @@ local MQTT_BROKER_BINDING = 5001
 -- Tasmota devices seen through discovery: MAC -> device (see mqtt.tasmota)
 local TASMOTA_PERSIST_KEY = "TasmotaDevices"
 local tasmotaDevices = {}
+--- The raw discovery message of each device, by MAC: read again at start-up so
+--- a driver update that reads more from it applies without waiting for the
+--- device to announce itself again.
+local TASMOTA_RAW_PERSIST_KEY = "TasmotaDiscovery"
+local tasmotaRaw = {}
 local SHELLY_PERSIST_KEY = "ShellyDevices"
 --- Shelly Gen2+ devices by MAC
 local shellyDevices = {}
@@ -219,7 +224,14 @@ local function onTasmotaDiscovery(mac, payload)
     end
     log:info("Tasmota device %s (%s) removed itself from discovery", old.name, old.topic)
     tasmotaDevices[mac] = nil
+    tasmotaRaw[mac] = nil
   else
+    if tasmotaRaw[mac] ~= payload then
+      tasmotaRaw[mac] = payload
+      persist:defer(function()
+        persist:set(TASMOTA_RAW_PERSIST_KEY, tasmotaRaw)
+      end)
+    end
     if sameValue(old, dev) then
       return
     end
@@ -229,6 +241,7 @@ local function onTasmotaDiscovery(mac, payload)
   -- Many devices announce themselves at once after a restart: save at most every 10s.
   persist:defer(function()
     persist:set(TASMOTA_PERSIST_KEY, tasmotaDevices)
+    persist:set(TASMOTA_RAW_PERSIST_KEY, tasmotaRaw)
   end)
   updateTasmotaProperty()
   notifyChildDrivers("TASMOTA_DEVICES_CHANGED", { mac = mac })
@@ -663,6 +676,15 @@ function OnDriverInit()
   log:trace("OnDriverInit()")
   persist:setWriteBehind(TASMOTA_PERSIST_KEY, 10 * ONE_SECOND)
   tasmotaDevices = persist:get(TASMOTA_PERSIST_KEY, {}) or {}
+  persist:setWriteBehind(TASMOTA_RAW_PERSIST_KEY, 10 * ONE_SECOND)
+  tasmotaRaw = persist:get(TASMOTA_RAW_PERSIST_KEY, {}) or {}
+  -- Read every kept discovery message again with this version's parser.
+  for mac, payload in pairs(tasmotaRaw) do
+    local ok, dev = pcall(Tasmota.parse, payload)
+    if ok and dev ~= nil then
+      tasmotaDevices[mac] = dev
+    end
+  end
   persist:setWriteBehind(SHELLY_PERSIST_KEY, 10 * ONE_SECOND)
   shellyDevices = persist:get(SHELLY_PERSIST_KEY, {}) or {}
 end
@@ -1065,7 +1087,9 @@ end
 
 function EC.ForgetTasmotaDevices()
   tasmotaDevices = {}
+  tasmotaRaw = {}
   persist:set(TASMOTA_PERSIST_KEY, nil)
+  persist:set(TASMOTA_RAW_PERSIST_KEY, nil)
   updateTasmotaProperty()
   notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
   log:print("Forgot all Tasmota devices; connected devices are listed again when they next connect")

@@ -378,6 +378,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102509 - 2026-10-25
+
+### Fixed
+
+- MQTT Broker: Tasmota devices found before v2026102508 showed 0 buttons until
+  they announced themselves again. The broker now keeps each discovery message
+  and reads it again when it starts, so what a driver update reads from it
+  applies at once.
+
 ## v2026102508 - 2026-10-25
 
 ### Added
