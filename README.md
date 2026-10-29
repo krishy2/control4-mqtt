@@ -383,6 +383,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026102900 - 2026-10-29
+
+### Fixed
+
+- MQTT Light could not be added to a Switch Group or other Control4 load group:
+  it declared no load group support. It now does, and carries out a group's set
+  level, ramp to level, start ramp and stop ramp commands on its own device.
+  Delete and re-add existing lights in Composer to pick up the change.
+
 ## v2026102600 - 2026-10-26
 
 ### Added

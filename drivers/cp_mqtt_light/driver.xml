@@ -42,7 +42,7 @@
     <color_rate_behavior>0</color_rate_behavior>
     <reduced_als_support>true</reduced_als_support>
     <advanced_scene_support>false</advanced_scene_support>
-    <load_group_support>false</load_group_support>
+    <load_group_support>true</load_group_support>
     <has_leds>true</has_leds>
     <cold_start>false</cold_start>
     <min_max>false</min_max>

@@ -985,4 +985,42 @@ T.capture(function()
 end)
 T.eq("chosen colors survive a restart", last(onLink(301, "BUTTON_COLORS")).ON_COLOR, "ff0000")
 
+-------------------------------------------------------------------------------
+T.section("Load groups (Switch Group)")
+-------------------------------------------------------------------------------
+T.contains("driver.xml offers load groups", xml, "<load_group_support>true</load_group_support>")
+local grp = newLight({
+  mode = "Separate Topics",
+  topics = {
+    power = { commandTopic = "cmnd/g/POWER", stateTopic = "" },
+    brightness = { commandTopic = "cmnd/g/Dimmer" },
+    transition = { commandTopic = "cmnd/g/Speed" },
+  },
+  optimistic = "Yes",
+})
+local function grpRun(command, params)
+  reset()
+  T.capture(function()
+    grp:handleProxyCommand(command, params)
+  end)
+end
+grpRun("JOIN_GROUP", { GROUP_ID = "120", KEEP_SYNC = "True" })
+T.eq("joining a group sends nothing", #publishes(), 0)
+grpRun("GROUP_SET_LEVEL", { GROUP_ID = "120", LEVEL = "60" })
+T.eq("a group level is this light's level", published("cmnd/g/Dimmer"), { "60" })
+grpRun("GROUP_RAMP_TO_LEVEL", { GROUP_ID = "120", LEVEL = "0", TIME = "2000" })
+T.eq("a group ramp to off fades on the device", { published("cmnd/g/Speed")[1], published("cmnd/g/POWER")[1] }, {
+  "2",
+  "OFF",
+})
+grp.level = 0
+grpRun("GROUP_START_RAMP", { GROUP_ID = "120", RAMP_UP = "True", RATE = "4000" })
+T.eq("a group ramp up starts a fade to full", published("cmnd/g/Dimmer"), { "100" })
+T.eq("over the whole rate (seconds)", published("cmnd/g/Speed"), { "4" })
+grpRun("GROUP_STOP_RAMP", { GROUP_ID = "120" })
+T.eq("stopping the group ramp stops this light", #published("cmnd/g/Dimmer"), 1)
+grpRun("LEAVE_GROUP", { GROUP_ID = "120" })
+T.eq("leaving sends nothing", #publishes(), 0)
+T.eq("group commands are handled", grp:handleProxyCommand("SET_GROUP_SYNC", { GROUP_ID = "120" }), true)
+
 T.finish()

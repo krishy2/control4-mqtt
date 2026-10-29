@@ -1722,6 +1722,25 @@ function MqttLight:handleProxyCommand(command, params)
     if level ~= nil then
       self:rampTo(level, num(params, "TIME") or 0)
     end
+  -- Load groups (Switch Group and other light groups). MQTT lights have no
+  -- device-side groups, so each member acts on the group command itself.
+  elseif command == "GROUP_SET_LEVEL" or command == "GROUP_RAMP_TO_LEVEL" then
+    local level = num(params, "LEVEL")
+    if level ~= nil then
+      self:rampTo(level, command == "GROUP_RAMP_TO_LEVEL" and (num(params, "TIME") or 0) or 0)
+    end
+  elseif command == "GROUP_START_RAMP" then
+    local up = tostring(params.RAMP_UP or ""):lower()
+    local rampUp = up == "true" or up == "1"
+    local rate = num(params, "RATE") or (rampUp and s.holdRateUp or s.holdRateDown) or 3000
+    -- The rate is for the whole range; scale it to the distance left.
+    local from = self.level or 0
+    local target = rampUp and 100 or 0
+    self:rampTo(target, math.max(1, round(rate * math.abs(target - from) / 100)))
+  elseif command == "GROUP_STOP_RAMP" then
+    self:stopRamp()
+  elseif command == "JOIN_GROUP" or command == "LEAVE_GROUP" or command == "SET_GROUP_SYNC" then
+    log:debug("%s group %s (keep sync %s)", command, tostring(params.GROUP_ID), tostring(params.KEEP_SYNC))
   elseif command == "BUTTON_ACTION" then
     self:buttonAction(params.BUTTON_ID, params.ACTION)
   elseif command == "SET_CLICK_RATE_UP" or command == "SET_CLICK_RATE_DOWN" then

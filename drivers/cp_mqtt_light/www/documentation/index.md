@@ -501,6 +501,10 @@ or color temperature mode.
   the brightness.
 - **Ramps and scenes** - Advanced Lighting Scenes are supported, including
   stopping a ramping scene.
+- **Light groups** - the light can be a member of Control4 load groups such as a
+  Switch Group. A group's level, ramp and stop commands are carried out by each
+  MQTT Light on its own device. After updating from an earlier version, delete
+  and re-add the light in Composer so Composer offers it for groups.
 
 ## Connections
 
