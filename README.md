@@ -387,6 +387,18 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103005 - 2026-10-30
+
+### Added
+
+- MQTT General w Webview: a 24-hour graph for every number, as a small line in
+  each tile and as a large chart with times, minimum, average and maximum when a
+  tile is tapped. Each point is the average of a 15-minute slot (96 points a
+  day). The history is kept in the controller's memory only (about 1.5 KB per
+  field, never written to flash) and starts again after a restart or Clear
+  Values. The page gets the whole history when it opens and only the newest
+  point after that.
+
 ## v2026103003 - 2026-10-30
 
 ### Changed

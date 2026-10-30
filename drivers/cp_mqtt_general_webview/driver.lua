@@ -21,6 +21,7 @@ local persist = require("lib.persist")
 local values = require("lib.values")
 local AutoBind = require("mqtt.autobind")
 local fields = require("mqtt.dashboard")
+local History = require("mqtt.history")
 
 -- Binding IDs
 local UI_BINDING = 5001 -- UI Button (Experience) proxy that hosts the web view
@@ -56,6 +57,8 @@ local gIconSent = nil
 local gStale = false
 local gWebUrl = nil
 local gReceived = {} -- every field key ever received -> true
+-- 24 h of 15-minute averages per numeric field, in RAM only (lost on restart by design)
+local gHistory = History.new()
 
 -----------------------------------------------------------------------
 -- Helpers
@@ -164,11 +167,50 @@ end
 -- Dashboard model
 -----------------------------------------------------------------------
 
+--- Round a graph value to one decimal more than its tile shows.
+local function roundFor(num, decimals)
+  local m = 10 ^ ((decimals or 2) + 1)
+  return math.floor(num * m + 0.5) / m
+end
+
+--- Graph data for the shown numeric fields: every field gets `c`, the average of the
+--- current 15-minute slot; with `withHistory` it also gets `h`, the whole 24 h as
+--- { slots ago, average } pairs (0 = current slot). Values follow Temperature Display.
+--- @param list table[] Built fields.
+--- @param slot integer Current slot.
+--- @param withHistory boolean
+local function addGraphs(list, slot, withHistory)
+  local config = getConfig()
+  local now = slot * gHistory.step
+  for _, f in ipairs(list) do
+    if f.numeric and not f.missing then
+      local def = fields.known(f.key)
+      local cur = gHistory:value(f.key, slot)
+      if cur ~= nil then
+        f.c = roundFor((fields.convert(def, cur, config)), f.decimals)
+      end
+      if withHistory then
+        local h = {}
+        for _, p in ipairs(gHistory:points(f.key, now) or {}) do
+          h[#h + 1] = { slot - p[1], roundFor((fields.convert(def, p[2], config)), f.decimals) }
+        end
+        f.h = h
+      end
+    end
+  end
+end
+
 --- Build the payload sent to the web view.
+--- @param withHistory boolean|nil Include the full 24 h graphs (only when the page asks).
 --- @return table
-local function buildDashboard()
+local function buildDashboard(withHistory)
   local list = fields.build(gValues, getConfig())
+  local slot = gHistory:slotOf(os.time())
+  addGraphs(list, slot, withHistory == true)
   return {
+    slot = slot,
+    step = gHistory.step,
+    slots = gHistory.size,
     mqttDashboard = 1,
     title = getTitle(),
     theme = Properties["Theme"] or "Dark",
@@ -328,6 +370,7 @@ local function syncSubscriptions(force)
   for key, entry in pairs(gValues) do
     if type(entry) ~= "table" or not wanted[entry.topic] then
       gValues[key] = nil
+      gHistory:drop(key)
       removedAny = true
     end
   end
@@ -574,6 +617,7 @@ function EC.MQTT_MESSAGE(tParams)
       break
     end
     gValues[key] = { value = value, ts = now, topic = topic }
+    gHistory:add(key, value, now)
   end
   gLastUpdate = now
   recordReceived(decoded)
@@ -596,9 +640,14 @@ end
 
 --- Synchronous request from the page: C4.sendCommand("GET_DASHBOARD", "{}", false, true).
 --- The returned XML reaches the page's onDataToUi(); a DataToUI push follows as a fallback.
+--- With {"history":"1"} the reply also carries the full 24 h graphs; the page asks for
+--- them when it opens and when it missed slots, and otherwise builds on `c`.
 function UIR.GET_DASHBOARD(tParams)
-  pushDashboard()
-  return dashboardXml()
+  local withHistory = tostring(Select(tParams, "history") or "") == "1"
+  if not withHistory then
+    pushDashboard()
+  end
+  return dashboardXml(buildDashboard(withHistory))
 end
 
 --- Asynchronous variant: C4.sendCommand("GET_DASHBOARD", "{}", true, true).
@@ -613,6 +662,7 @@ end
 function EC.Clear_Values(tParams)
   log:print("Clearing all values")
   gValues = {}
+  gHistory:clear()
   gLastUpdate = nil
   gStale = false
   saveValues()

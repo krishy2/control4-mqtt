@@ -101,6 +101,40 @@ T.eq(
   { "pm25", "temperature", "linkquality" }
 )
 
+T.section("24 h history: 15-minute averages in a ring buffer")
+local History = require("mqtt.history")
+local hist = History.new()
+T.eq("15-minute slots, 96 of them", { hist.step, hist.size }, { 900, 96 })
+local t0 = 1000 * 900 -- start of a slot
+hist:add("pm25", 10, t0)
+hist:add("pm25", 20, t0 + 60)
+T.eq("a slot holds the average of its values", hist:value("pm25", 1000), 15)
+hist:add("pm25", 30, t0 + 900)
+T.eq("the finished slot is kept", hist:points("pm25", t0 + 900), { { 1000, 15 }, { 1001, 30 } })
+hist:add("pm25", 50, t0 + 900 * 3)
+T.eq("an empty slot is a gap", hist:points("pm25", t0 + 900 * 3), { { 1000, 15 }, { 1001, 30 }, { 1003, 50 } })
+T.eq("24 h later the oldest slot has rolled out", hist:points("pm25", t0 + 900 * 96), { { 1001, 30 }, { 1003, 50 } })
+hist:add("pm25", 70, t0 + 900 * 96)
+T.eq(
+  "and its place in the ring is reused",
+  hist:points("pm25", t0 + 900 * 96),
+  { { 1001, 30 }, { 1003, 50 }, { 1096, 70 } }
+)
+hist:add("state", "ON", t0)
+T.eq("only numbers are kept", hist:points("state", t0), nil)
+for i = 0, 2000 do
+  hist:add("busy", i, t0 + i * 60)
+end
+local ring = 0
+for _ in pairs(hist.series.busy.id) do
+  ring = ring + 1
+end
+T.eq("memory stays at 96 slots however much arrives", ring, 96)
+hist:drop("pm25")
+T.eq("drop", hist:points("pm25", t0), nil)
+hist:clear()
+T.eq("clear", hist:points("busy", t0), nil)
+
 T.section("non-JSON payloads")
 flat = fields.decodePayload("home/office/co2", " 1450 ", decode)
 T.eq("plain number is named after the topic", flat.co2, 1450)
@@ -329,6 +363,58 @@ T.eq("Received Fields emptied", props["Received Fields"], "")
 T.eq("Field Order kept", props["Field Order"], "co2,pm25,voc_index,temperature,humidity,linkquality")
 ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":6}' })
 T.eq("and it fills again as fields arrive", props["Received Fields"], "pm25")
+
+T.section("the graphs in the web view")
+local function dashboard(params)
+  local r = UIRequest("GET_DASHBOARD", params or {})
+  local j = string.match(r, "<dashboard>(.*)</dashboard>")
+  j = string.gsub(j, "&quot;", '"')
+  j = string.gsub(j, "&amp;", "&")
+  return JSON:decode(j)
+end
+local function fieldOf(dash, key)
+  for _, x in ipairs(dash.fields) do
+    if x.key == key then
+      return x
+    end
+  end
+end
+-- A fixed clock, so the test never straddles a 15-minute boundary
+ExecuteCommand("Clear Values", {})
+local realTime = os.time
+local fixedNow = 2000 * 900 + 30
+os.time = function(t)
+  if t ~= nil then
+    return realTime(t)
+  end
+  return fixedNow
+end
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":10,"temperature":20.04}' })
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":6}' })
+local live = dashboard()
+T.eq("the slot settings", { live.step, live.slots }, { 900, 96 })
+T.eq("every numeric field carries its current slot average", fieldOf(live, "pm25").c, 8)
+T.eq("without the full history unless asked", fieldOf(live, "pm25").h, nil)
+local full = dashboard({ history = "1" })
+T.eq("asked: the whole 24 h, as { slots ago, average }", fieldOf(full, "pm25").h, { { 0, 8 } })
+T.eq("one decimal more than the tile", fieldOf(full, "temperature").h, { { 0, 20.04 } })
+T.eq("placeholders get no graph", fieldOf(full, "voc_index").h, nil)
+Properties["Temperature Display"] = "Celsius to Fahrenheit"
+OnPropertyChanged("Temperature Display")
+T.eq("Temperature Display applies to the graph too", fieldOf(dashboard({ history = "1" }), "temperature").h, {
+  { 0, 68.07 },
+})
+Properties["Temperature Display"] = "As Received"
+OnPropertyChanged("Temperature Display")
+fixedNow = fixedNow + 900
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":20}' })
+T.eq("15 minutes later: a new point", fieldOf(dashboard({ history = "1" }), "pm25").h, { { 1, 8 }, { 0, 20 } })
+fixedNow = fixedNow + 900 * 96
+T.eq("after 24 h without data the graph is empty", fieldOf(dashboard({ history = "1" }), "pm25").h, {})
+ExecuteCommand("Clear Values", {})
+local cleared = fieldOf(dashboard({ history = "1" }), "pm25")
+T.eq("Clear Values clears the graphs", { cleared.missing, cleared.c, cleared.h }, { true, nil, nil })
+os.time = realTime
 
 T.section("broker disconnects")
 ReceivedFromProxy(5002, "BROKER_DISCONNECTED", {})
