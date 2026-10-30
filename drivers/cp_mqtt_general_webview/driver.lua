@@ -1,9 +1,11 @@
---- MQTT Web View Driver
---- Subscribes to one or more MQTT topics through the MQTT Broker driver, keeps every
---- value it receives (JSON payloads are flattened) and shows them on a web view that
---- the controller itself serves from this driver's c4z. The page is opened from a
---- UI Button (Experience) proxy, so it works on T4/T5 touch screens and in the
---- Control4 mobile apps, locally and remotely, with no extra web server.
+--- MQTT General w Webview Driver
+--- A WebView driver, laid out like Control4's WebView driver (webview.c4z): a protocol
+--- driver with a uibutton proxy, so it is an Experience button that can be shown in a
+--- room's Comfort menu (or Listen, Watch, Security) on T4/T5 touch screens and in the
+--- Control4 mobile apps. Unlike webview.c4z it does not open an outside URL: it
+--- subscribes to MQTT topics through the MQTT Broker driver, keeps every value it
+--- receives (JSON payloads are flattened) and shows them on a page the controller
+--- serves from this driver's own c4z.
 ---
 --- Data path: MQTT broker -> MQTT Broker driver -> this driver (EC.MQTT_MESSAGE)
 ---            -> C4:SendDataToUI / UIRequest -> web view JavaScript (C4 JS API).
@@ -30,7 +32,10 @@ local VARIABLES_KEY = "DashboardVariables"
 
 -- Web view page inside this driver's www/ folder
 local WEB_PATH = "dashboard/index.html"
-local DEFAULT_DRIVER_NAME = "cp_mqtt_webview"
+local DEFAULT_DRIVER_NAME = "cp_mqtt_general_webview"
+
+-- Like webview.c4z, wait for the uibutton proxy before sending it the URL and icon
+local PROXY_READY_DELAY = 3 * ONE_SECOND
 
 -- Variable that reports the worst graded reading (e.g. PM2.5, VOC, CO2)
 local LEVEL_VARIABLE = "Air Quality"
@@ -370,10 +375,15 @@ function OnDriverLateInit()
   end
   gInitialized = true
 
-  -- Point the UI Button at the page served from this driver's c4z
+  -- Point the Experience button at the page served from this driver's c4z. Sent once the
+  -- proxy is up (as webview.c4z does), with the icon for the current air quality.
   gWebUrl = getWebUrl()
   UpdateProperty("Web View URL", gWebUrl)
-  SendToProxy(UI_BINDING, "URL_CHANGED", { url = gWebUrl })
+  SetTimer("ProxyReady", PROXY_READY_DELAY, function()
+    SendToProxy(UI_BINDING, "URL_CHANGED", { url = gWebUrl })
+    gIconSent = nil
+    sendIcon(gLevel)
+  end)
 
   UpdateProperty("Driver Status", "Broker disconnected")
   refresh(false)
