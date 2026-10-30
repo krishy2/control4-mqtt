@@ -1,0 +1,370 @@
+<devicedata>
+  <name>PI Thermostat</name>
+  <version/>
+  <manufacturer>Control Pro</manufacturer>
+  <model>PI Thermostat</model>
+  <creator>Chris Toth</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
+  <created>10/31/2026 12:00:00 AM</created>
+  <modified/>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <composer_categories>
+    <category>Comfort</category>
+  </composer_categories>
+  <conditionals/>
+  <events>
+    <event>
+      <id>1</id>
+      <name>Full Power Started</name>
+      <description>NAME started full heating or cooling (far from the setpoint)</description>
+    </event>
+    <event>
+      <id>2</id>
+      <name>Full Power Ended</name>
+      <description>NAME handed back to PI control</description>
+    </event>
+    <event>
+      <id>3</id>
+      <name>Sensor Lost</name>
+      <description>NAME has no temperature reading and closed the valves</description>
+    </event>
+    <event>
+      <id>4</id>
+      <name>Sensor Restored</name>
+      <description>NAME has a temperature reading again</description>
+    </event>
+    <event>
+      <id>5</id>
+      <name>Auto-Tune Finished</name>
+      <description>NAME finished an auto-tune and uses the new gains</description>
+    </event>
+    <event>
+      <id>6</id>
+      <name>Auto-Tune Failed</name>
+      <description>NAME stopped an auto-tune without new gains</description>
+    </event>
+    <event>
+      <id>7</id>
+      <name>Gains Learned</name>
+      <description>NAME adjusted its PI gains from what it learned</description>
+    </event>
+  </events>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <property>
+        <name>Valves</name>
+        <type>LABEL</type>
+        <default>Valves</default>
+      </property>
+      <property>
+        <name>Valve Count</name>
+        <type>LIST</type>
+        <default>2 Valves</default>
+        <items>
+          <item>2 Valves</item>
+          <item>1 Valve</item>
+        </items>
+        <description>2 Valves: heat valve and cool valve (Off, Heat, Cool, Auto). 1 Valve: see Single Valve Use.</description>
+      </property>
+      <property>
+        <name>Single Valve Use</name>
+        <type>LIST</type>
+        <default>Heat Only</default>
+        <items>
+          <item>Heat Only</item>
+          <item>Cool Only</item>
+          <item>Changeover</item>
+        </items>
+        <description>Heat Only: Heat Valve connection. Cool Only: Cool Valve connection. Changeover: one valve, the mode (Heat or Cool) says which water the pipe carries.</description>
+      </property>
+      <property>
+        <name>Valve Opens When Relay Is</name>
+        <type>LIST</type>
+        <default>Closed</default>
+        <items>
+          <item>Closed</item>
+          <item>Opened</item>
+        </items>
+        <description>Closed for a normally closed valve on a relay that energizes it</description>
+      </property>
+      <property>
+        <name>Setpoints</name>
+        <type>LABEL</type>
+        <default>Setpoints</default>
+      </property>
+      <property>
+        <name>Setpoint Minimum</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>0</minimum>
+        <maximum>30</maximum>
+        <default>5</default>
+        <description>Lowest setpoint, °C</description>
+      </property>
+      <property>
+        <name>Setpoint Maximum</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>15</minimum>
+        <maximum>45</maximum>
+        <default>35</default>
+        <description>Highest setpoint, °C</description>
+      </property>
+      <property>
+        <name>Heat Cool Deadband</name>
+        <type>LIST</type>
+        <default>1</default>
+        <items>
+          <item>0.5</item>
+          <item>1</item>
+          <item>1.5</item>
+          <item>2</item>
+          <item>3</item>
+        </items>
+        <description>Minimum °C between the heat and cool setpoints</description>
+      </property>
+      <property>
+        <name>PI Gains</name>
+        <type>LABEL</type>
+        <default>PI Gains</default>
+      </property>
+      <property>
+        <name>Heating Kp</name>
+        <type>STRING</type>
+        <default>30</default>
+        <description>% valve per °C of deviation. Updated by auto-tune and learning; type a value to set it.</description>
+      </property>
+      <property>
+        <name>Heating Ti</name>
+        <type>STRING</type>
+        <default>30</default>
+        <description>Integral time, minutes. Updated by auto-tune and learning; type a value to set it.</description>
+      </property>
+      <property>
+        <name>Cooling Kp</name>
+        <type>STRING</type>
+        <default>30</default>
+        <description>% valve per °C of deviation. Updated by auto-tune and learning; type a value to set it.</description>
+      </property>
+      <property>
+        <name>Cooling Ti</name>
+        <type>STRING</type>
+        <default>30</default>
+        <description>Integral time, minutes. Updated by auto-tune and learning; type a value to set it.</description>
+      </property>
+      <property>
+        <name>Status</name>
+        <type>LABEL</type>
+        <default>Status</default>
+      </property>
+      <property>
+        <name>Controller State</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Temperature</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Controller Output</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Heat Valve</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Cool Valve</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Last Learning</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+    </properties>
+    <actions>
+      <action>
+        <name>Start Auto-Tune Heating</name>
+        <command>StartAutoTuneHeating</command>
+      </action>
+      <action>
+        <name>Start Auto-Tune Cooling</name>
+        <command>StartAutoTuneCooling</command>
+      </action>
+      <action>
+        <name>Stop Auto-Tune</name>
+        <command>StopAutoTune</command>
+      </action>
+      <action>
+        <name>Reset Learned Gains</name>
+        <command>ResetLearnedGains</command>
+      </action>
+      <action>
+        <name>Request Temperature</name>
+        <command>RequestTemperature</command>
+      </action>
+    </actions>
+  </config>
+  <capabilities>
+    <can_heat>True</can_heat>
+    <can_cool>True</can_cool>
+    <can_do_auto>False</can_do_auto>
+    <has_humidity>False</has_humidity>
+    <has_single_setpoint>False</has_single_setpoint>
+    <can_preset>True</can_preset>
+    <can_preset_schedule>True</can_preset_schedule>
+    <has_temperature>True</has_temperature>
+    <has_connection_status>False</has_connection_status>
+    <current_temperature_min_c>-40</current_temperature_min_c>
+    <current_temperature_max_c>100</current_temperature_max_c>
+    <current_temperature_min_f>-40</current_temperature_min_f>
+    <current_temperature_max_f>212</current_temperature_max_f>
+    <current_temperature_resolution_c>0.1</current_temperature_resolution_c>
+    <current_temperature_resolution_f>0.1</current_temperature_resolution_f>
+    <setpoint_heat_resolution_c>0.5</setpoint_heat_resolution_c>
+    <setpoint_heat_resolution_f>1</setpoint_heat_resolution_f>
+    <setpoint_cool_resolution_c>0.5</setpoint_cool_resolution_c>
+    <setpoint_cool_resolution_f>1</setpoint_cool_resolution_f>
+    <setpoint_heat_min_c>5</setpoint_heat_min_c>
+    <setpoint_heat_max_c>35</setpoint_heat_max_c>
+    <setpoint_heat_min_f>41</setpoint_heat_min_f>
+    <setpoint_heat_max_f>95</setpoint_heat_max_f>
+    <setpoint_cool_min_c>5</setpoint_cool_min_c>
+    <setpoint_cool_max_c>35</setpoint_cool_max_c>
+    <setpoint_cool_min_f>41</setpoint_cool_min_f>
+    <setpoint_cool_max_f>95</setpoint_cool_max_f>
+    <setpoint_heatcool_deadband_c>1</setpoint_heatcool_deadband_c>
+    <setpoint_heatcool_deadband_f>2</setpoint_heatcool_deadband_f>
+    <can_inc_dec_setpoints>True</can_inc_dec_setpoints>
+    <can_change_scale>True</can_change_scale>
+    <has_extras>True</has_extras>
+    <has_vacation_mode>False</has_vacation_mode>
+    <has_remote_sensor>False</has_remote_sensor>
+    <fan_modes/>
+    <hvac_modes>Off,Heat,Cool,Auto</hvac_modes>
+    <hvac_states>Off,Heating,Cooling,Idle</hvac_states>
+    <hold_modes/>
+  </capabilities>
+  <proxies>
+    <proxy proxybindingid="5001" primary="True" name="PI Thermostat">thermostatV2</proxy>
+  </proxies>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Thermostat</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>THERMOSTAT</classname>
+        </class>
+      </classes>
+      <hidden>True</hidden>
+    </connection>
+    <connection>
+      <id>1</id>
+      <facing>6</facing>
+      <connectionname>Temperature Sensor</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>TEMPERATURE_VALUE</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>2</id>
+      <facing>6</facing>
+      <connectionname>Heat Valve</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>RELAY</classname>
+        </class>
+      </classes>
+    </connection>
+    <connection>
+      <id>3</id>
+      <facing>6</facing>
+      <connectionname>Cool Valve</connectionname>
+      <type>1</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>RELAY</classname>
+        </class>
+      </classes>
+    </connection>
+  </connections>
+</devicedata>

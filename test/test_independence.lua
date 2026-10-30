@@ -50,7 +50,12 @@ for _, dir in ipairs(drivers) do
     dir .. " does not use the shared MQTT_BROKER class",
     not xml:find("<classname>MQTT_BROKER</classname>", 1, true)
   )
-  T.check(dir .. " uses CP_MQTT_BROKER", xml:find("<classname>CP_MQTT_BROKER</classname>", 1, true) ~= nil)
+  -- MQTT drivers (cp_mqtt_*) use the suite's broker class; others (cp_pi_thermostat) need no broker
+  if dir:sub(1, 8) == "cp_mqtt_" then
+    T.check(dir .. " uses CP_MQTT_BROKER", xml:find("<classname>CP_MQTT_BROKER</classname>", 1, true) ~= nil)
+  else
+    T.check(dir .. " has no MQTT broker connection", not xml:find("MQTT_BROKER", 1, true))
+  end
 end
 
 T.section("No references to the other suite")

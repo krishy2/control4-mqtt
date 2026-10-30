@@ -18,6 +18,25 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103100 - 2026-10-31
+
+### Added
+
+- **PI Thermostat** (`cp_pi_thermostat.c4z`): a native Control4 thermostat that
+  runs its own control loop, with no MQTT. The room temperature comes from a
+  temperature sensor bound to its Temperature Sensor connection; heat and cool
+  setpoints (with a deadband) are kept in the driver; the output drives a heat
+  valve and a cool valve through Control4 relays, time-proportionally. With one
+  valve it is Heat Only, Cool Only or Changeover (the mode says which water the
+  pipe carries). More than 5 °C from the setpoint the valve is fully open; below
+  4.5 °C a PI controller takes over without a jump. The heating and cooling
+  gains are learned: an auto-tune (relay test) started from Extras, then
+  continuous adjustment from overshoot and speed. User settings are in Extras,
+  the controller's status in the thermostat Message, and scheduling is the
+  thermostat's own preset scheduling. Settings, setpoints and learned gains are
+  saved on the controller. Valves close when the sensor stops reporting.
+- The MQTT Broker's Update Drivers also updates the PI Thermostat.
+
 ## v2026103006 - 2026-10-30
 
 ### Added

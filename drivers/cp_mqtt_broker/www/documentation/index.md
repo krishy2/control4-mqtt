@@ -36,7 +36,7 @@ is added first.
 
 ## Driver Suite
 
-The MQTT driver suite consists of seven drivers:
+The MQTT driver suite consists of eight drivers:
 
 | Driver                     | Direction     | Purpose                                                                                                 |
 | -------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
@@ -47,6 +47,7 @@ The MQTT driver suite consists of seven drivers:
 | **MQTT Fan**               | Bidirectional | One MQTT fan as a native Control4 fan (on/off, speeds, preset, reverse)                                 |
 | **MQTT Thermostat**        | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity)      |
 | **MQTT General w Webview** | Inbound       | MQTT values (air-quality sensors, ...) as a WebView button in Comfort, on touch screens and in the apps |
+| **PI Thermostat**          | N/A           | A thermostat with its own self-learning PI control of heat and cool water valves (no MQTT)              |
 
 **Typical Setup:**
 
@@ -60,6 +61,8 @@ The MQTT driver suite consists of seven drivers:
    sensors
 1. Add **MQTT General w Webview** to show an MQTT device's values as a WebView
    button in Comfort, on touch screens and in the mobile apps
+1. Add a **PI Thermostat** per room with water valves on Control4 relays and a
+   temperature sensor: it controls them itself and needs no broker
 
 # <span style="color:#660066">Index</span>
 
@@ -109,8 +112,8 @@ The MQTT driver suite consists of seven drivers:
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
    the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`,
-   `cp_mqtt_shutter.c4z`, `cp_mqtt_fan.c4z`, `cp_mqtt_thermostat.c4z` and
-   `cp_mqtt_general_webview.c4z` drivers.
+   `cp_mqtt_shutter.c4z`, `cp_mqtt_fan.c4z`, `cp_mqtt_thermostat.c4z`,
+   `cp_mqtt_general_webview.c4z` and `cp_pi_thermostat.c4z` drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
