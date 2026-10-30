@@ -15,6 +15,7 @@ DRIVER_FILENAMES = {
   "cp_mqtt_light.c4z",
   "cp_mqtt_shutter.c4z",
   "cp_mqtt_thermostat.c4z",
+  "cp_mqtt_webview.c4z",
 }
 
 require("lib.utils")

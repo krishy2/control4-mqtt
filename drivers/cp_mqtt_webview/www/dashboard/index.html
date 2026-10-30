@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MQTT Web View</title>
+<!--
+  Everything (CSS + JS) is inline on purpose: the Control4 mobile apps cannot load
+  relative resources from a controller-hosted page, and T4/T5 screens run an older
+  embedded Gecko. The script is plain ES5.
+-->
+<style>
+  :root {
+    --bg: #101214;
+    --panel: #1b1e22;
+    --panel-2: #23272c;
+    --line: #2e3339;
+    --text: #f2f4f5;
+    --muted: #8d969f;
+    --accent: #4fa3ff;
+    --good: #34c759;
+    --fair: #ffcc00;
+    --poor: #ff9500;
+    --bad: #ff3b30;
+  }
+  body.light {
+    --bg: #f3f4f6;
+    --panel: #ffffff;
+    --panel-2: #f7f8fa;
+    --line: #e2e5e9;
+    --text: #15181b;
+    --muted: #68717a;
+    --accent: #0a6fdb;
+  }
+  @media (prefers-color-scheme: light) {
+    body.auto {
+      --bg: #f3f4f6;
+      --panel: #ffffff;
+      --panel-2: #f7f8fa;
+      --line: #e2e5e9;
+      --text: #15181b;
+      --muted: #68717a;
+      --accent: #0a6fdb;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    min-height: 100vh;
+  }
+  .wrap { padding: 20px 20px 28px; max-width: 1200px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    margin: 0 16px 6px 0;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 4px 10px 4px 22px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 13px;
+    position: relative;
+    margin-left: 10px;
+  }
+  .pill:before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    margin-top: -3.5px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .pill.live:before { background: var(--good); }
+  .pill.stale:before { background: var(--poor); }
+  .pill.offline:before { background: var(--bad); }
+
+  .summary {
+    display: none;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+  }
+  .summary.show { display: flex; }
+  .summary .big-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 14px;
+    flex: 0 0 auto;
+  }
+  .summary .txt { font-size: 18px; }
+  .summary .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -6px;
+  }
+  .tile {
+    flex: 1 1 180px;
+    min-width: 150px;
+    margin: 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 16px 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .tile .bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+  }
+  .tile .label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile .value {
+    margin-top: 10px;
+    font-size: 40px;
+    line-height: 1.05;
+    font-weight: 300;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile .value.text { font-size: 22px; font-weight: 400; white-space: normal; word-break: break-word; }
+  .tile .meta .c-good + .age, .tile .meta .c-fair + .age,
+  .tile .meta .c-poor + .age, .tile .meta .c-bad + .age { margin-left: 8px; }
+  .tile .unit { font-size: 16px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+  .tile .meta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 15px;
+  }
+  .lvl-good .bar { background: var(--good); }
+  .lvl-fair .bar { background: var(--fair); }
+  .lvl-poor .bar { background: var(--poor); }
+  .lvl-bad .bar { background: var(--bad); }
+  .c-good { color: var(--good); }
+  .c-fair { color: var(--fair); }
+  .c-poor { color: var(--poor); }
+  .c-bad { color: var(--bad); }
+  .bg-good { background: var(--good); }
+  .bg-fair { background: var(--fair); }
+  .bg-poor { background: var(--poor); }
+  .bg-bad { background: var(--bad); }
+
+  .empty {
+    display: none;
+    text-align: center;
+    color: var(--muted);
+    padding: 60px 20px;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .empty.show { display: block; }
+  .empty b { color: var(--text); font-weight: 500; }
+
+  footer {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  @media (max-width: 480px) {
+    .wrap { padding: 14px 12px 20px; }
+    h1 { font-size: 22px; }
+    .tile { flex-basis: 140px; min-width: 130px; padding: 14px 12px 12px; }
+    .tile .value { font-size: 32px; }
+  }
+</style>
+</head>
+<body class="dark">
+<div class="wrap">
+  <header>
+    <h1 id="title">MQTT</h1>
+    <div class="status"><span id="updated"></span><span id="pill" class="pill">Connecting…</span></div>
+  </header>
+
+  <div id="summary" class="summary">
+    <div id="summaryDot" class="big-dot"></div>
+    <div>
+      <div id="summaryText" class="txt"></div>
+      <div id="summarySub" class="sub"></div>
+    </div>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty show">Waiting for data from the controller…</div>
+  <footer id="footer"></footer>
+</div>
+
+<script type="text/javascript">
+(function () {
+  "use strict";
+
+  var COMMAND = "GET_DASHBOARD";
+  var POLL_MS = 20000;
+  var TICK_MS = 15000;
+  var LEVEL_TEXT = { good: "Good", fair: "Fair", poor: "Poor", bad: "Bad" };
+
+  var state = null; // last dashboard
+  var receivedAt = 0; // local ms when state arrived
+  var lastJson = "";
+
+  function $(id) { return document.getElementById(id); }
+
+  function log(msg) {
+    try { console.log("[mqtt_webview] " + msg); } catch (e) {}
+  }
+
+  function escapeHtml(s) {
+    return String(s === null || s === undefined ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function xmlUnescape(s) {
+    return s.replace(/&#x([0-9a-fA-F]+);/g, function (m, h) { return String.fromCharCode(parseInt(h, 16)); })
+      .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(parseInt(d, 10)); })
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+      .replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  }
+
+  /*
+   * The dashboard JSON reaches the page wrapped in different envelopes depending on the
+   * path (UIRequest reply, DataToUI converted to JSON by Broker, raw XML string). Search
+   * any shape for the object carrying our "mqttDashboard" marker.
+   */
+  function findDashboard(x, depth) {
+    if (depth > 8 || x === null || x === undefined) { return null; }
+    if (typeof x === "string") {
+      var s = x.replace(/^\s+|\s+$/g, "");
+      if (!s) { return null; }
+      if (s.charAt(0) === "{" || s.charAt(0) === "[") {
+        try { return findDashboard(JSON.parse(s), depth + 1); } catch (e) {}
+      }
+      if (s.charAt(0) === "<") {
+        var m = s.match(/<dashboard[^>]*>([\s\S]*)<\/dashboard>/);
+        if (m) { return findDashboard(xmlUnescape(m[1]), depth + 1); }
+      }
+      if (s.indexOf("&quot;mqttDashboard&quot;") >= 0) {
+        return findDashboard(xmlUnescape(s), depth + 1);
+      }
+      return null;
+    }
+    if (typeof x === "object") {
+      if (x.mqttDashboard && x.fields) { return x; }
+      for (var k in x) {
+        if (Object.prototype.hasOwnProperty.call(x, k)) {
+          var r = findDashboard(x[k], depth + 1);
+          if (r) { return r; }
+        }
+      }
+    }
+    return null;
+  }
+
+  function ago(seconds) {
+    if (seconds === null || seconds === undefined || isNaN(seconds)) { return ""; }
+    if (seconds < 0) { seconds = 0; }
+    if (seconds < 45) { return "just now"; }
+    var m = Math.round(seconds / 60);
+    if (m < 60) { return m + " min ago"; }
+    var h = Math.floor(m / 60);
+    if (h < 24) { return h + " h " + (m % 60) + " min ago"; }
+    return Math.floor(h / 24) + " d ago";
+  }
+
+  /* Seconds elapsed on the controller's clock since controller time t. */
+  function ageOf(t) {
+    if (!state || !t) { return null; }
+    return (state.now - t) + (new Date().getTime() - receivedAt) / 1000;
+  }
+
+  function applyTheme(theme) {
+    var cls = theme === "Light" ? "light" : (theme === "Auto" ? "auto" : "dark");
+    if (document.body.className !== cls) { document.body.className = cls; }
+  }
+
+  function renderStatus() {
+    var pill = $("pill");
+    var updated = $("updated");
+    if (!state) { return; }
+    var age = ageOf(state.updated);
+    var stale = state.stale || (state.staleAfter > 0 && age !== null && age > state.staleAfter);
+    if (!state.connected) {
+      pill.className = "pill offline";
+      pill.innerHTML = "Broker offline";
+    } else if (stale) {
+      pill.className = "pill stale";
+      pill.innerHTML = "Stale";
+    } else if (state.updated) {
+      pill.className = "pill live";
+      pill.innerHTML = "Live";
+    } else {
+      pill.className = "pill";
+      pill.innerHTML = "No data";
+    }
+    updated.innerHTML = state.updated ? "Updated " + ago(age) : "";
+    var tiles = document.querySelectorAll ? document.querySelectorAll(".tile .age[data-ts]") : [];
+    for (var i = 0; i < tiles.length; i++) {
+      tiles[i].innerHTML = ago(ageOf(parseFloat(tiles[i].getAttribute("data-ts"))));
+    }
+  }
+
+  function renderSummary(d) {
+    var box = $("summary");
+    if (!d.level) { box.className = "summary"; return; }
+    var worst = [];
+    for (var i = 0; i < d.fields.length; i++) {
+      if (d.fields[i].level === d.level) { worst.push(d.fields[i].label); }
+    }
+    $("summaryDot").className = "big-dot bg-" + d.level;
+    $("summaryText").innerHTML = "Air quality: <span class=\"c-" + d.level + "\">" + LEVEL_TEXT[d.level] + "</span>";
+    $("summarySub").innerHTML = d.level === "good" ? "All graded readings are in range"
+      : "Driven by " + escapeHtml(worst.join(", "));
+    box.className = "summary show";
+  }
+
+  function render(d) {
+    applyTheme(d.theme);
+    $("title").innerHTML = escapeHtml(d.title || "MQTT");
+    try { document.title = d.title || "MQTT"; } catch (e) {}
+
+    var html = [];
+    var showTileAge = d.topics && d.topics.length > 1;
+    for (var i = 0; i < d.fields.length; i++) {
+      var f = d.fields[i];
+      var cls = "tile" + (f.level ? " lvl-" + f.level : "");
+      var valueCls = "value" + (f.numeric ? "" : " text");
+      html.push(
+        "<div class=\"" + cls + "\">" +
+          "<div class=\"bar\"></div>" +
+          "<div class=\"label\">" + escapeHtml(f.label) + "</div>" +
+          "<div class=\"" + valueCls + "\">" + escapeHtml(f.display) +
+            (f.unit ? "<span class=\"unit\">" + escapeHtml(f.unit) + "</span>" : "") +
+          "</div>" +
+          "<div class=\"meta\">" +
+            (f.level ? "<span class=\"c-" + f.level + "\">" + LEVEL_TEXT[f.level] + "</span>" : "") +
+            (showTileAge && f.ts ? "<span class=\"age\" data-ts=\"" + f.ts + "\"></span>" : "") +
+          "</div>" +
+        "</div>"
+      );
+    }
+    $("grid").innerHTML = html.join("");
+
+    var empty = $("empty");
+    if (d.fields.length === 0) {
+      var topics = (d.topics || []).join(", ");
+      empty.innerHTML = topics
+        ? "Waiting for MQTT data on <b>" + escapeHtml(topics) + "</b>"
+        : "No MQTT topic configured.<br>Set <b>MQTT Topics</b> in the driver properties.";
+      empty.className = "empty show";
+    } else {
+      empty.className = "empty";
+    }
+    $("footer").innerHTML = escapeHtml((d.topics || []).join(" · "));
+    renderSummary(d);
+    renderStatus();
+  }
+
+  function accept(raw) {
+    var d = findDashboard(raw, 0);
+    if (!d) { return false; }
+    if (!d.fields || !d.fields.length) { d.fields = []; }
+    state = d;
+    receivedAt = new Date().getTime();
+    var json = JSON.stringify(d.fields) + d.title + d.theme + d.level + (d.topics || []).join();
+    if (json !== lastJson) {
+      lastJson = json;
+      render(d);
+    } else {
+      renderStatus();
+    }
+    return true;
+  }
+
+  /* ----- Control4 JavaScript API callbacks (must be globals) ----- */
+
+  window.onDataToUi = function (value) {
+    if (!accept(value)) { log("DataToUI ignored: " + String(value).substring(0, 200)); }
+  };
+  window.onVariable = function (value) {};
+  window.onSendCommandError = function (message) { log("sendCommand error: " + message); };
+  window.onSubscribeToDataToUiError = function (message) { log("subscribe error: " + message); };
+  window.onSubscribeToDataToUi = window.onSubscribeToDataToUiError;
+  window.onSubscribeToVariableError = function (v, message) {};
+
+  function request() {
+    try {
+      // async=false -> UIRequest to the driver, sendToProtocol=true -> this driver
+      window.C4.sendCommand(COMMAND, "{}", false, true);
+    } catch (e) {
+      log("request failed: " + e);
+    }
+  }
+
+  /* ----- Preview outside Control4 (browser): sample data ----- */
+  function demo() {
+    var t = Math.floor(new Date().getTime() / 1000);
+    accept({
+      mqttDashboard: 1, title: "Living Room Air", theme: "Dark", connected: true,
+      topics: ["zigbee2mqtt/Vindstyrka"], now: t, updated: t - 30, staleAfter: 900, level: "fair",
+      fields: [
+        { key: "pm25", label: "PM2.5", display: "18", unit: "µg/m³", level: "fair", numeric: true, ts: t - 30 },
+        { key: "voc_index", label: "VOC Index", display: "96", unit: "", level: "good", numeric: true, ts: t - 30 },
+        { key: "temperature", label: "Temperature", display: "22.4", unit: "°C", numeric: true, ts: t - 30 },
+        { key: "humidity", label: "Humidity", display: "41", unit: "%", level: "good", numeric: true, ts: t - 30 },
+        { key: "linkquality", label: "Link Quality", display: "142", unit: "LQI", numeric: true, ts: t - 30 }
+      ]
+    });
+  }
+
+  function hasApi() {
+    return window.C4 && typeof window.C4.sendCommand === "function";
+  }
+
+  function connect() {
+    try { window.C4.subscribeToDataToUi(true); } catch (e) { log("subscribe failed: " + e); }
+    request();
+    setInterval(request, POLL_MS);
+  }
+
+  function start() {
+    setInterval(renderStatus, TICK_MS);
+    // The navigator injects the C4 object; give it a moment in case it lands late
+    var tries = 0;
+    (function wait() {
+      if (hasApi()) { connect(); return; }
+      if (++tries < 20) { setTimeout(wait, 150); return; }
+      if (/^https?:|^file:/.test(window.location.protocol)) {
+        log("C4 JavaScript API not available - showing sample data");
+        demo();
+      } else {
+        $("empty").innerHTML = "Control4 JavaScript API not available.<br>Update the Control4 app or navigator.";
+      }
+    })();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
+})();
+</script>
+</body>
+</html>

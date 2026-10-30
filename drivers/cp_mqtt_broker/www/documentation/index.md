@@ -36,7 +36,7 @@ is added first.
 
 ## Driver Suite
 
-The MQTT driver suite consists of five drivers:
+The MQTT driver suite consists of six drivers:
 
 | Driver              | Direction     | Purpose                                                                                            |
 | ------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
@@ -45,6 +45,7 @@ The MQTT driver suite consists of five drivers:
 | **MQTT Light**      | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)               |
 | **MQTT Shutter**    | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)            |
 | **MQTT Thermostat** | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity) |
+| **MQTT Web View**   | Inbound       | MQTT values (air-quality sensors, ...) on a web view for touch screens and the mobile apps         |
 
 **Typical Setup:**
 
@@ -55,6 +56,8 @@ The MQTT driver suite consists of five drivers:
 1. Add one **MQTT Thermostat** per thermostat (Tasmota, TuyaMCU, ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
+1. Add **MQTT Web View** to show an MQTT device's values on touch screens and in
+   the mobile apps
 
 # <span style="color:#660066">Index</span>
 
@@ -104,7 +107,8 @@ The MQTT driver suite consists of five drivers:
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
    the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`,
-   `cp_mqtt_shutter.c4z` and `cp_mqtt_thermostat.c4z` drivers.
+   `cp_mqtt_shutter.c4z`, `cp_mqtt_thermostat.c4z` and `cp_mqtt_webview.c4z`
+   drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
