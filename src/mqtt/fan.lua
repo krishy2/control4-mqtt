@@ -513,7 +513,7 @@ function Fan:_publish(topicName, payload)
 end
 
 function Fan:_command(feature)
-  return trim((((self.cfg.topics or {})[feature]) or {}).commandTopic)
+  return trim(((self.cfg.topics or {})[feature] or {}).commandTopic)
 end
 
 function Fan:isOn()
