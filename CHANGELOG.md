@@ -18,6 +18,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103000 - 2026-10-30
+
+### Added
+
+- MQTT Web View driver (`cp_mqtt_webview.c4z`): the values of one or more MQTT
+  topics on a web view that opens from an Experience button on T4 and T5 touch
+  screens and in the Control4 iOS and Android apps. JSON payloads such as an
+  IKEA VINDSTYRKA in Zigbee2MQTT become one tile per field, with labels, units
+  and Good, Fair, Poor or Bad grading for air-quality readings (also on the
+  navigator icon). The page is served by the controller from the driver and gets
+  its data from the driver, not from MQTT. Optional Control4 variables per
+  value, hidden, ordered and relabeled fields, stale data detection, and Values
+  Updated, Air Quality Changed and Data Stale events.
+- MQTT Broker: connects and updates the web view driver too.
+
 ## v2026102900 - 2026-10-29
 
 ### Fixed
