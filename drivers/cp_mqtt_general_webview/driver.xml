@@ -144,7 +144,7 @@
         <name>Title</name>
         <type>STRING</type>
         <default/>
-        <description>Heading shown on the web view. Empty uses the driver name.</description>
+        <description>Heading shown on the web view. Empty shows no heading.</description>
       </property>
       <property>
         <name>Theme</name>

@@ -94,14 +94,10 @@ local function getConfig()
   }
 end
 
---- Title shown at the top of the web view.
+--- Title shown at the top of the web view; empty shows no heading.
 --- @return string
 local function getTitle()
-  local title = Properties["Title"]
-  if IsEmpty(title) then
-    title = C4:GetDeviceData(C4:GetDeviceID(), "name") or "MQTT"
-  end
-  return title
+  return Properties["Title"] or ""
 end
 
 --- Resolve the controller:// URL of the web view from this driver's file name, so a
