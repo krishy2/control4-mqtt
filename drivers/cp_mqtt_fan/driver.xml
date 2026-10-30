@@ -1,0 +1,587 @@
+<devicedata>
+  <name>MQTT Fan</name>
+  <version/>
+  <manufacturer>Control Pro</manufacturer>
+  <model>MQTT Fan</model>
+  <creator>Chris Toth</creator>
+  <control>lua_gen</control>
+  <driver>DriverWorks</driver>
+  <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
+  <created>10/30/2026 11:00:00 PM</created>
+  <modified/>
+  <minimum_os_version>3.3.0</minimum_os_version>
+  <proxies qty="1">
+    <proxy proxybindingid="5001" name="MQTT Fan">fan</proxy>
+  </proxies>
+  <composer_categories>
+    <category>Comfort</category>
+  </composer_categories>
+  <conditionals/>
+  <events/>
+  <capabilities>
+    <!-- The fan proxy reads these once; none can change at runtime. The driver
+         maps the device's real speed count (Speed Count / Speed Values) onto
+         these 6 levels, and reverses only when a direction topic is set. -->
+    <can_set_speed>True</can_set_speed>
+    <discrete_levels>6</discrete_levels>
+    <speed_names>Level 1,Level 2,Level 3,Level 4,Level 5,Level 6</speed_names>
+    <can_reverse>True</can_reverse>
+    <can_set_preset>True</can_set_preset>
+    <preset_speed>6</preset_speed>
+    <buttons_are_virtual>False</buttons_are_virtual>
+  </capabilities>
+  <config>
+    <script file="driver.lua" jit="1"/>
+    <documentation file="www/documentation/index.html"/>
+    <properties>
+      <property>
+        <name>Driver Settings</name>
+        <type>LABEL</type>
+        <default>Driver Settings</default>
+      </property>
+      <property>
+        <name>Driver Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Driver Version</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+      </property>
+      <property>
+        <name>Log Level</name>
+        <type>LIST</type>
+        <default>3 - Info</default>
+        <items>
+          <item>0 - Fatal</item>
+          <item>1 - Error</item>
+          <item>2 - Warning</item>
+          <item>3 - Info</item>
+          <item>4 - Debug</item>
+          <item>5 - Trace</item>
+          <item>6 - Ultra</item>
+        </items>
+      </property>
+      <property>
+        <name>Log Mode</name>
+        <type>LIST</type>
+        <default>Off</default>
+        <items>
+          <item>Off</item>
+          <item>Print</item>
+          <item>Log</item>
+          <item>Print and Log</item>
+        </items>
+      </property>
+      <!-- Global Availability Settings -->
+      <property>
+        <name>Availability Settings</name>
+        <type>LABEL</type>
+        <default>Availability Settings</default>
+      </property>
+      <property>
+        <name>Availability Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to subscribe for device availability (optional)</description>
+      </property>
+      <property>
+        <name>Availability Topic Value</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Raw value received from the availability topic</description>
+      </property>
+      <property>
+        <name>Availability Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to extract availability value (e.g., "$.status"). Leave empty to use raw payload.</description>
+      </property>
+      <property>
+        <name>Availability Value Path Result</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Result of JSONPath extraction for availability</description>
+      </property>
+      <property>
+        <name>Availability Status</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current availability status</description>
+      </property>
+      <property>
+        <name>Payload Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is available (if only this is set, other values mean unavailable)</description>
+      </property>
+      <property>
+        <name>Payload Not Available</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload that indicates device is not available (if only this is set, other values mean available)</description>
+      </property>
+      <!-- Fan Settings -->
+      <property>
+        <name>Fan Settings</name>
+        <type>LABEL</type>
+        <default>Fan Settings</default>
+      </property>
+      <property>
+        <name>Capabilities</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Abilities this fan has, derived from the topics (or JSON keys) that are filled in</description>
+      </property>
+      <property>
+        <name>Fan State</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Current state as reported to Control4</description>
+      </property>
+      <property>
+        <name>Discovered Device</name>
+        <type>DYNAMIC_LIST</type>
+        <description>Pick a Tasmota iFan found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+      </property>
+      <property>
+        <name>Device Notes</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Settings on the discovered device that should change for this fan to work well</description>
+      </property>
+      <property>
+        <name>Payload Mode</name>
+        <type>LIST</type>
+        <default>Separate Topics</default>
+        <items>
+          <item>Separate Topics</item>
+          <item>JSON</item>
+        </items>
+        <description>Separate Topics: one topic per ability with plain values (Tasmota, ESPHome, Shelly command topics). JSON: one state topic and one command topic carrying a JSON object (Zigbee2MQTT, Home Assistant JSON).</description>
+      </property>
+      <property>
+        <name>JSON State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic the fan publishes its JSON state on (e.g. zigbee2mqtt/bedroom_fan)</description>
+      </property>
+      <property>
+        <name>JSON Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish JSON commands to (e.g. zigbee2mqtt/bedroom_fan/set)</description>
+      </property>
+      <property>
+        <name>State Request Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional. Topic that asks the device for its full state, sent when the broker connects and when the device comes online (Tasmota: cmnd/&lt;topic&gt;/STATE)</description>
+      </property>
+      <property>
+        <name>State Request Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Payload sent with the state request. Empty for Tasmota.</description>
+      </property>
+      <property>
+        <name>Optimistic</name>
+        <type>LIST</type>
+        <default>Auto</default>
+        <items>
+          <item>Auto</item>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Report commanded state immediately instead of waiting for the device (Auto: yes when no state topic is set)</description>
+      </property>
+      <property>
+        <name>QoS</name>
+        <type>LIST</type>
+        <default>0</default>
+        <items>
+          <item>0</item>
+          <item>1</item>
+          <item>2</item>
+        </items>
+        <description>MQTT Quality of Service level for subscriptions and commands</description>
+      </property>
+      <property>
+        <name>Retain</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>Yes</item>
+          <item>No</item>
+        </items>
+        <description>Retain command messages on the broker</description>
+      </property>
+      <property>
+        <name>On Speed</name>
+        <type>LIST</type>
+        <default>Preset Speed</default>
+        <items>
+          <item>Preset Speed</item>
+          <item>Last Speed</item>
+        </items>
+        <description>Speed the fan runs at when turned on: the preset chosen in Control4 (highest until one is chosen), or the speed it last ran at</description>
+      </property>
+      <!-- On/Off -->
+      <property>
+        <name>On/Off</name>
+        <type>LABEL</type>
+        <default>On/Off</default>
+      </property>
+      <property>
+        <name>Power State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting on/off state (e.g. stat/tasmota_fan/POWER). Optional when the speed topic also reports off.</description>
+      </property>
+      <property>
+        <name>Power Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the on/off value when the payload is JSON (e.g. "$.POWER"). Leave empty to use the raw payload.</description>
+      </property>
+      <property>
+        <name>Power Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish on/off commands to (e.g. cmnd/tasmota_fan/POWER)</description>
+      </property>
+      <property>
+        <name>State Key</name>
+        <type>STRING</type>
+        <default>state</default>
+        <description>JSON key (or JSONPath) holding the on/off state</description>
+      </property>
+      <property>
+        <name>State On</name>
+        <type>STRING</type>
+        <default>ON</default>
+        <description>Value that means ON (if only this is set, other values mean OFF)</description>
+      </property>
+      <property>
+        <name>State Off</name>
+        <type>STRING</type>
+        <default>OFF</default>
+        <description>Value that means OFF (if only this is set, other values mean ON)</description>
+      </property>
+      <property>
+        <name>Payload On</name>
+        <type>STRING</type>
+        <default>ON</default>
+        <description>Value to send to turn the fan on</description>
+      </property>
+      <property>
+        <name>Payload Off</name>
+        <type>STRING</type>
+        <default>OFF</default>
+        <description>Value to send to turn the fan off</description>
+      </property>
+      <!-- Speed -->
+      <property>
+        <name>Speed</name>
+        <type>LABEL</type>
+        <default>Speed</default>
+      </property>
+      <property>
+        <name>Speed State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the speed. Filling in a speed topic gives the fan speeds.</description>
+      </property>
+      <property>
+        <name>Speed Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the speed value (e.g. "$.FanSpeed" for Tasmota stat/x/RESULT)</description>
+      </property>
+      <property>
+        <name>Speed Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish speeds to (e.g. cmnd/tasmota_fan/FanSpeed)</description>
+      </property>
+      <property>
+        <name>Speed Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the speed (e.g. "fan_mode"). Filling it in gives the fan speeds.</description>
+      </property>
+      <property>
+        <name>Speed Count</name>
+        <type>RANGED_INTEGER</type>
+        <minimum>1</minimum>
+        <maximum>6</maximum>
+        <default>3</default>
+        <description>Number of speeds when Speed Values is empty; the device values are then 1 to this number</description>
+      </property>
+      <property>
+        <name>Speed Values</name>
+        <type>STRING</type>
+        <default/>
+        <description>Device values for each speed, slowest first, comma separated (e.g. "low,medium,high" or "33,66,100"). The number of values is the speed count. Numbers reported in between go to the nearest speed.</description>
+      </property>
+      <property>
+        <name>Speed Off Value</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional. Speed value that means off (e.g. "0" for Tasmota FanSpeed, "off" for Zigbee2MQTT fan_mode). With it the speed topic also turns the fan off.</description>
+      </property>
+      <property>
+        <name>Speed Mapping</name>
+        <type>LIST</type>
+        <default>Spread over 6 Levels</default>
+        <items>
+          <item>Spread over 6 Levels</item>
+          <item>Levels 1 to N</item>
+        </items>
+        <description>Control4 always shows 6 speed levels. Spread: the top speed is level 6 (3 speeds: levels 2, 4, 6). Levels 1 to N: speed 1 is level 1; levels above the speed count run the top speed.</description>
+      </property>
+      <!-- Direction -->
+      <property>
+        <name>Direction</name>
+        <type>LABEL</type>
+        <default>Direction</default>
+      </property>
+      <property>
+        <name>Direction State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic reporting the direction. Filling in a direction topic lets Control4 reverse the fan.</description>
+      </property>
+      <property>
+        <name>Direction Value Path</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSONPath to the direction value (e.g. "$.direction")</description>
+      </property>
+      <property>
+        <name>Direction Command Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Topic to publish the direction to</description>
+      </property>
+      <property>
+        <name>Direction Key</name>
+        <type>STRING</type>
+        <default/>
+        <description>JSON key for the direction (e.g. "direction")</description>
+      </property>
+      <property>
+        <name>Direction Forward</name>
+        <type>STRING</type>
+        <default>forward</default>
+        <description>Value that means forward (sent and received)</description>
+      </property>
+      <property>
+        <name>Direction Reverse</name>
+        <type>STRING</type>
+        <default>reverse</default>
+        <description>Value that means reverse (sent and received)</description>
+      </property>
+      <!-- Button Links -->
+      <property>
+        <name>Button Links</name>
+        <type>LABEL</type>
+        <default>Button Links</default>
+      </property>
+      <property>
+        <name>On Button LED When On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the On Button Link while the fan is on</description>
+      </property>
+      <property>
+        <name>On Button LED When Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the On Button Link while the fan is off</description>
+      </property>
+      <property>
+        <name>Off Button LED When On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Off Button Link while the fan is on</description>
+      </property>
+      <property>
+        <name>Off Button LED When Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Off Button Link while the fan is off</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the fan is on</description>
+      </property>
+      <property>
+        <name>Toggle Button LED When Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Toggle Button Link while the fan is off</description>
+      </property>
+      <property>
+        <name>Speed Button LED When On</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,255</default>
+        <description>LED color of keypad buttons bound to the Speed Up, Speed Down and Toggle Direction Button Links while the fan is on</description>
+      </property>
+      <property>
+        <name>Speed Button LED When Off</name>
+        <type>COLOR_SELECTOR</type>
+        <default>0,0,0</default>
+        <description>LED color of keypad buttons bound to the Speed Up, Speed Down and Toggle Direction Button Links while the fan is off</description>
+      </property>
+    </properties>
+    <actions>
+      <action>
+        <name>Request State</name>
+        <command>RequestState</command>
+      </action>
+    </actions>
+  </config>
+  <connections>
+    <connection>
+      <id>5001</id>
+      <facing>6</facing>
+      <connectionname>Fan</connectionname>
+      <type>2</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>FAN</classname>
+        </class>
+      </classes>
+      <hidden>True</hidden>
+    </connection>
+    <connection>
+      <id>5002</id>
+      <facing>6</facing>
+      <connectionname>MQTT Broker</connectionname>
+      <type>2</type>
+      <consumer>True</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>CP_MQTT_BROKER</classname>
+          <autobind>True</autobind>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>300</id>
+      <facing>6</facing>
+      <connectionname>On Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>301</id>
+      <facing>6</facing>
+      <connectionname>Off Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>302</id>
+      <facing>6</facing>
+      <connectionname>Toggle Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>303</id>
+      <facing>6</facing>
+      <connectionname>Speed Up Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>304</id>
+      <facing>6</facing>
+      <connectionname>Speed Down Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+    <connection>
+      <id>305</id>
+      <facing>6</facing>
+      <connectionname>Toggle Direction Button Link</connectionname>
+      <type>1</type>
+      <consumer>False</consumer>
+      <audiosource>False</audiosource>
+      <videosource>False</videosource>
+      <linelevel>False</linelevel>
+      <classes>
+        <class>
+          <classname>BUTTON_LINK</classname>
+        </class>
+      </classes>
+      <hidden>False</hidden>
+    </connection>
+  </connections>
+</devicedata>
