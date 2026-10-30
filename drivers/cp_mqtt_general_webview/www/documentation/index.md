@@ -46,6 +46,7 @@ connects to MQTT itself.
   - [Driver Properties](#driver-properties)
   - [Driver Actions](#driver-actions)
   - [Programming](#programming)
+- [24-Hour Graphs](#24-hour-graphs)
 - [How the Web View Gets Its Data](#how-the-web-view-gets-its-data)
 - [Support](#support)
 - [Changelog](#changelog)
@@ -71,6 +72,8 @@ connects to MQTT itself.
 - Fields that arrive in separate messages are kept, and the fields in Field
   Order are always shown
 - A list of every field ever received, with one-click copy to Field Order
+- A 24-hour graph for every number: a small line in each tile, and a large chart
+  with minimum, average and maximum when you tap the tile
 - Hide, reorder and relabel fields from Composer
 - Stale data detection
 - Connects itself to the MQTT Broker driver
@@ -225,7 +228,8 @@ Sends the current values to open web views.
 
 ##### Clear Values
 
-Forgets all values. The broker sends the last message of each topic again.
+Forgets all values and the 24-hour graphs. The broker sends the last message of
+each topic again.
 
 ## Programming
 
@@ -240,12 +244,28 @@ Forgets all values. The broker sends the last message of each topic again.
 One variable per value when Create Variables is `Yes`, and `Air Quality` (Good,
 Fair, Poor or Bad) when a graded reading is present.
 
+# <span style="color:#660066">24-Hour Graphs</span>
+
+Every tile with a number shows a small line of its last 24 hours. Tap the tile
+to open a large chart with times, and the minimum, average and maximum of those
+24 hours. Tap outside the chart or the ✕ to close it.
+
+- Each point is the average of the values received in a 15-minute slot, so a day
+  is 96 points.
+- A gap in the line means nothing arrived in that time.
+- The history is kept in the controller's memory only, about 1.5 KB per field,
+  and is never written to flash. It starts again after the controller or the
+  driver restarts, and after [Clear Values](#clear-values).
+- Temperatures follow
+  [Temperature Display](#temperature-display--as-received--celsius-to-fahrenheit--fahrenheit-to-celsius--source-is-fahrenheit-).
+
 # <span style="color:#660066">How the Web View Gets Its Data</span>
 
 The page uses the Control4 UI Button JavaScript API:
 
 - When it opens, and every 20 seconds after that, it asks the driver for the
-  current values.
+  current values. When it opens it also gets the 24-hour graphs; after that only
+  the newest point is sent.
 - It subscribes to the driver's updates, and the driver sends one as soon as a
   new MQTT message arrives.
 

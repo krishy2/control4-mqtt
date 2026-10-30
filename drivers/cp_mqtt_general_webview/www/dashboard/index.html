@@ -162,6 +162,92 @@
     text-overflow: ellipsis;
   }
   .tile .value.missing { color: var(--muted); }
+  .tile.graph { cursor: pointer; }
+  .tile.graph:active { background: var(--panel-2); }
+
+  /* 24 h sparkline in each tile */
+  .spark { display: block; width: 100%; height: 34px; margin-top: 8px; overflow: visible; }
+  .spark polyline, .chart-plot polyline {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .spark .area, .chart-plot .area { fill: var(--accent); opacity: 0.12; stroke: none; }
+  .lvl-good .spark polyline, .chart.lvl-good .chart-plot polyline { stroke: var(--good); }
+  .lvl-fair .spark polyline, .chart.lvl-fair .chart-plot polyline { stroke: var(--fair); }
+  .lvl-poor .spark polyline, .chart.lvl-poor .chart-plot polyline { stroke: var(--poor); }
+  .lvl-bad .spark polyline, .chart.lvl-bad .chart-plot polyline { stroke: var(--bad); }
+  .lvl-good .spark .area, .chart.lvl-good .chart-plot .area { fill: var(--good); }
+  .lvl-fair .spark .area, .chart.lvl-fair .chart-plot .area { fill: var(--fair); }
+  .lvl-poor .spark .area, .chart.lvl-poor .chart-plot .area { fill: var(--poor); }
+  .lvl-bad .spark .area, .chart.lvl-bad .chart-plot .area { fill: var(--bad); }
+  .spark-empty { height: 34px; margin-top: 8px; }
+
+  /* Large 24 h chart, opened by tapping a tile */
+  .overlay {
+    display: none;
+    position: fixed;
+    left: 0; top: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .overlay.show { display: block; }
+  .chart {
+    position: relative;
+    max-width: 900px;
+    margin: 4vh auto 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 20px 20px 16px;
+  }
+  .chart-close {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    text-align: center;
+    font-size: 22px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .chart-label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+  }
+  .chart-value { margin-top: 6px; font-size: 40px; font-weight: 300; line-height: 1.05; }
+  .chart-value .unit { font-size: 16px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+  .chart-sub { margin-top: 4px; font-size: 13px; color: var(--muted); }
+  .chart-body { display: flex; margin-top: 18px; }
+  .chart-y {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    padding-right: 8px;
+    height: 200px;
+    min-width: 36px;
+  }
+  .chart-main { flex: 1 1 auto; min-width: 0; }
+  .chart-plot { display: block; width: 100%; height: 200px; overflow: visible; }
+  .chart-plot line { stroke: var(--line); stroke-width: 1; }
+  .chart-x { position: relative; height: 18px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .chart-x span { position: absolute; top: 0; white-space: nowrap; }
+  .chart-stats { display: flex; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .chart-stats div { flex: 1 1 0; text-align: center; }
+  .chart-stats b { display: block; font-size: 20px; font-weight: 400; color: var(--text); margin-top: 2px; }
+  .chart-stats span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .chart-none { height: 200px; line-height: 200px; text-align: center; color: var(--muted); font-size: 14px; }
   .tile .value.text { font-size: 22px; font-weight: 400; white-space: normal; word-break: break-word; }
   .tile .meta .c-good + .age, .tile .meta .c-fair + .age,
   .tile .meta .c-poor + .age, .tile .meta .c-bad + .age { margin-left: 8px; }
@@ -228,6 +314,8 @@
 
   <div id="grid" class="grid"></div>
   <div id="empty" class="empty show">Waiting for data from the controller…</div>
+  <div id="overlay" class="overlay"><div id="chart" class="chart"></div></div>
+
   <footer>
     <div class="status"><span id="updated"></span><span id="pill" class="pill">Connecting…</span></div>
     <div id="footer" class="topics"></div>
@@ -242,6 +330,12 @@
   var POLL_MS = 20000;
   var TICK_MS = 15000;
   var LEVEL_TEXT = { good: "Good", fair: "Fair", poor: "Poor", bad: "Bad" };
+
+  var HISTORY_RETRY_MS = 60000;
+  var series = {}; // field key -> { absolute slot: 15-minute average }
+  var historySlot = null; // slot of the last full history received
+  var historyAskedAt = 0;
+  var openKey = null; // field shown in the large chart
 
   var state = null; // last dashboard
   var receivedAt = 0; // local ms when state arrived
@@ -362,6 +456,182 @@
     box.className = "summary show";
   }
 
+  /* ----- 24 h graphs ----- */
+
+  function fmt(n, decimals) {
+    var s = n.toFixed(decimals === undefined ? 2 : decimals);
+    if (s.indexOf(".") >= 0) { s = s.replace(/0+$/, "").replace(/\.$/, ""); }
+    return s === "-0" ? "0" : s;
+  }
+
+  /* Merge graph data from a dashboard: `h` (full history) replaces a series, `c` (the
+     current slot's average) updates its last point. Old slots are dropped. */
+  function mergeGraphs(d) {
+    if (d.slot === undefined) { return; }
+    var first = d.slot - (d.slots || 96) + 1;
+    var full = false;
+    for (var i = 0; i < d.fields.length; i++) {
+      var f = d.fields[i];
+      if (f.h) {
+        full = true;
+        var s = {};
+        for (var j = 0; j < f.h.length; j++) { s[d.slot - f.h[j][0]] = f.h[j][1]; }
+        series[f.key] = s;
+      }
+      if (f.c !== undefined && f.c !== null) {
+        if (!series[f.key]) { series[f.key] = {}; }
+        series[f.key][d.slot] = f.c;
+      }
+    }
+    if (full) { historySlot = d.slot; }
+    for (var key in series) {
+      if (Object.prototype.hasOwnProperty.call(series, key)) {
+        for (var slot in series[key]) {
+          if (Object.prototype.hasOwnProperty.call(series[key], slot) && parseInt(slot, 10) < first) {
+            delete series[key][slot];
+          }
+        }
+      }
+    }
+  }
+
+  /* Points of a field in the 24 h window: [{ i: 0..slots-1, v }] oldest first. */
+  function pointsOf(key) {
+    var s = series[key];
+    var out = [];
+    if (!s || !state) { return out; }
+    var n = state.slots || 96;
+    var first = state.slot - n + 1;
+    for (var i = 0; i < n; i++) {
+      var v = s[first + i];
+      if (v !== undefined && v !== null) { out.push({ i: i, v: v }); }
+    }
+    return out;
+  }
+
+  function rangeOf(pts) {
+    var lo = pts[0].v, hi = pts[0].v;
+    for (var i = 1; i < pts.length; i++) {
+      if (pts[i].v < lo) { lo = pts[i].v; }
+      if (pts[i].v > hi) { hi = pts[i].v; }
+    }
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    var pad = (hi - lo) * 0.1;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+
+  /* SVG polylines (split at missing slots) and the filled area under them, drawn in a
+     w x h box; x covers the whole 24 h so the line shows when values arrived. */
+  function pathsSvg(pts, w, h, range) {
+    var n = (state && state.slots) || 96;
+    var seg = [], segs = [];
+    for (var i = 0; i < pts.length; i++) {
+      if (seg.length && pts[i].i !== pts[i - 1].i + 1) { segs.push(seg); seg = []; }
+      seg.push(pts[i]);
+    }
+    if (seg.length) { segs.push(seg); }
+    var out = [];
+    for (var k = 0; k < segs.length; k++) {
+      var line = [], s = segs[k];
+      for (var m = 0; m < s.length; m++) {
+        var x = s[m].i / (n - 1) * w;
+        var y = h - (s[m].v - range.lo) / (range.hi - range.lo) * h;
+        line.push(x.toFixed(1) + "," + y.toFixed(1));
+      }
+      if (s.length === 1) {
+        // A lone point: a short dash so it is visible
+        var p = line[0].split(",");
+        line = [(parseFloat(p[0]) - 2).toFixed(1) + "," + p[1], (parseFloat(p[0]) + 2).toFixed(1) + "," + p[1]];
+      }
+      var x0 = line[0].split(",")[0], x1 = line[line.length - 1].split(",")[0];
+      out.push("<polygon class=\"area\" points=\"" + x0 + "," + h + " " + line.join(" ") + " " + x1 + "," + h + "\"/>");
+      out.push("<polyline vector-effect=\"non-scaling-stroke\" points=\"" + line.join(" ") + "\"/>");
+    }
+    return out.join("");
+  }
+
+  function sparkSvg(f) {
+    var pts = pointsOf(f.key);
+    if (pts.length === 0) { return "<div class=\"spark-empty\"></div>"; }
+    return "<svg class=\"spark\" viewBox=\"0 0 300 34\" preserveAspectRatio=\"none\">" +
+      pathsSvg(pts, 300, 34, rangeOf(pts)) + "</svg>";
+  }
+
+  function fieldOf(key) {
+    if (!state) { return null; }
+    for (var i = 0; i < state.fields.length; i++) {
+      if (state.fields[i].key === key) { return state.fields[i]; }
+    }
+    return null;
+  }
+
+  function timeLabel(slot) {
+    var t = new Date(slot * ((state && state.step) || 900) * 1000);
+    var h = t.getHours(), m = t.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function renderChart() {
+    var f = openKey && fieldOf(openKey);
+    if (!f) { closeChart(); return; }
+    var pts = pointsOf(f.key);
+    var unit = f.unit ? "<span class=\"unit\">" + escapeHtml(f.unit) + "</span>" : "";
+    var html = "<div class=\"chart-close\" id=\"chartClose\">&#x2715;</div>" +
+      "<div class=\"chart-label\">" + escapeHtml(f.label) + "</div>" +
+      "<div class=\"chart-value\">" + escapeHtml(f.display) + unit + "</div>" +
+      "<div class=\"chart-sub\">Last 24 hours, 15-minute averages</div>";
+    if (pts.length === 0) {
+      html += "<div class=\"chart-none\">The graph starts with the next value.</div>";
+    } else {
+      var r = rangeOf(pts);
+      var n = state.slots || 96, first = state.slot - n + 1;
+      var lo = pts[0].v, hi = pts[0].v, sum = 0;
+      for (var i = 0; i < pts.length; i++) {
+        lo = Math.min(lo, pts[i].v); hi = Math.max(hi, pts[i].v); sum += pts[i].v;
+      }
+      var dec = f.decimals === undefined ? 2 : f.decimals;
+      var grid = "";
+      for (var g = 0; g <= 4; g++) {
+        var gy = (200 * g / 4).toFixed(1);
+        grid += "<line vector-effect=\"non-scaling-stroke\" x1=\"0\" y1=\"" + gy + "\" x2=\"600\" y2=\"" + gy + "\"/>";
+      }
+      var xs = "";
+      for (var q = 0; q <= 4; q++) {
+        var pos = q * 25;
+        var style = q === 0 ? "left:0" : (q === 4 ? "right:0" : "left:" + pos + "%;margin-left:-16px");
+        xs += "<span style=\"" + style + "\">" + (q === 4 ? "now" : timeLabel(first + Math.round((n - 1) * q / 4))) + "</span>";
+      }
+      html += "<div class=\"chart-body\">" +
+          "<div class=\"chart-y\"><span>" + fmt(r.hi, dec) + "</span><span>" + fmt((r.hi + r.lo) / 2, dec) +
+          "</span><span>" + fmt(r.lo, dec) + "</span></div>" +
+          "<div class=\"chart-main\">" +
+            "<svg class=\"chart-plot\" viewBox=\"0 0 600 200\" preserveAspectRatio=\"none\">" + grid +
+              pathsSvg(pts, 600, 200, r) + "</svg>" +
+            "<div class=\"chart-x\">" + xs + "</div>" +
+          "</div>" +
+        "</div>" +
+        "<div class=\"chart-stats\">" +
+          "<div><span>Min</span><b>" + fmt(lo, dec) + "</b></div>" +
+          "<div><span>Average</span><b>" + fmt(sum / pts.length, dec) + "</b></div>" +
+          "<div><span>Max</span><b>" + fmt(hi, dec) + "</b></div>" +
+        "</div>";
+    }
+    var box = $("chart");
+    box.className = "chart" + (f.level ? " lvl-" + f.level : "");
+    box.innerHTML = html;
+    $("overlay").className = "overlay show";
+  }
+
+  function openChart(key) {
+    openKey = key;
+    renderChart();
+  }
+
+  function closeChart() {
+    openKey = null;
+    $("overlay").className = "overlay";
+  }
+
   function render(d) {
     applyTheme(d.theme);
     // No Title: no heading at all
@@ -373,16 +643,18 @@
     var showTileAge = d.topics && d.topics.length > 1;
     for (var i = 0; i < d.fields.length; i++) {
       var f = d.fields[i];
-      var cls = "tile" + (f.level ? " lvl-" + f.level : "");
+      var graph = f.numeric && !f.missing;
+      var cls = "tile" + (f.level ? " lvl-" + f.level : "") + (graph ? " graph" : "");
       // A Field Order entry without a value yet: "--", dimmed, in the number style
       var valueCls = "value" + (f.missing ? " missing" : (f.numeric ? "" : " text"));
       html.push(
-        "<div class=\"" + cls + "\">" +
+        "<div class=\"" + cls + "\"" + (graph ? " data-key=\"" + escapeHtml(f.key) + "\"" : "") + ">" +
           "<div class=\"bar\"></div>" +
           "<div class=\"label\">" + escapeHtml(f.label) + "</div>" +
           "<div class=\"" + valueCls + "\">" + escapeHtml(f.display) +
             (f.unit ? "<span class=\"unit\">" + escapeHtml(f.unit) + "</span>" : "") +
           "</div>" +
+          (graph ? sparkSvg(f) : (hasGraphs(d) ? "<div class=\"spark-empty\"></div>" : "")) +
           "<div class=\"meta\">" +
             (f.level ? "<span class=\"c-" + f.level + "\">" + LEVEL_TEXT[f.level] + "</span>" : "") +
             (showTileAge && f.ts ? "<span class=\"age\" data-ts=\"" + f.ts + "\"></span>" : "") +
@@ -405,6 +677,15 @@
     $("footer").innerHTML = escapeHtml((d.topics || []).join(" · "));
     renderSummary(d);
     renderStatus();
+    if (openKey) { renderChart(); }
+  }
+
+  /* Whether any tile has a graph (others then keep the same height). */
+  function hasGraphs(d) {
+    for (var i = 0; i < d.fields.length; i++) {
+      if (d.fields[i].numeric && !d.fields[i].missing) { return true; }
+    }
+    return false;
   }
 
   function accept(raw) {
@@ -413,7 +694,10 @@
     if (!d.fields || !d.fields.length) { d.fields = []; }
     state = d;
     receivedAt = new Date().getTime();
-    var json = JSON.stringify(d.fields) + d.title + d.theme + d.level + (d.topics || []).join();
+    mergeGraphs(d);
+    needHistory(d);
+    var json = JSON.stringify(d.fields) + JSON.stringify(series) + d.title + d.theme + d.level +
+      (d.topics || []).join();
     if (json !== lastJson) {
       lastJson = json;
       render(d);
@@ -434,27 +718,57 @@
   window.onSubscribeToDataToUi = window.onSubscribeToDataToUiError;
   window.onSubscribeToVariableError = function (v, message) {};
 
-  function request() {
+  function request(withHistory) {
     try {
       // async=false -> UIRequest to the driver, sendToProtocol=true -> this driver
-      window.C4.sendCommand(COMMAND, "{}", false, true);
+      window.C4.sendCommand(COMMAND, withHistory ? "{\"history\":\"1\"}" : "{}", false, true);
     } catch (e) {
       log("request failed: " + e);
     }
   }
 
+  /* Ask for the full 24 h once, and again only when the page missed a 15-minute slot
+     (e.g. the app was in the background); otherwise `c` keeps the graphs current. */
+  function needHistory(d) {
+    if (d.slot === undefined || !window.C4 || typeof window.C4.sendCommand !== "function") { return; }
+    var behind = historySlot === null || d.slot - historySlot > 1;
+    var now = new Date().getTime();
+    if (behind && now - historyAskedAt > HISTORY_RETRY_MS) {
+      historyAskedAt = now;
+      request(true);
+    } else if (!behind && d.slot !== historySlot) {
+      // One slot later: carry on from the live values
+      historySlot = d.slot;
+    }
+  }
+
   /* ----- Preview outside Control4 (browser): sample data ----- */
+  function demoHistory(base, amp, phase) {
+    var h = [];
+    for (var o = 95; o >= 0; o--) {
+      if (o > 70 && o < 76) { continue; } // a gap, as when the sensor was offline
+      h.push([o, Math.round((base + amp * Math.sin((o + phase) / 9) + amp * 0.3 * Math.sin(o / 2)) * 10) / 10]);
+    }
+    return h;
+  }
+
   function demo() {
     var t = Math.floor(new Date().getTime() / 1000);
     accept({
+      slot: Math.floor(t / 900), step: 900, slots: 96,
       mqttDashboard: 1, title: "Living Room Air", theme: "Dark", connected: true,
       topics: ["zigbee2mqtt/Vindstyrka"], now: t, updated: t - 30, staleAfter: 900, level: "fair",
       fields: [
-        { key: "pm25", label: "PM2.5", display: "18", unit: "µg/m³", level: "fair", numeric: true, ts: t - 30 },
-        { key: "voc_index", label: "VOC Index", display: "96", unit: "", level: "good", numeric: true, ts: t - 30 },
-        { key: "temperature", label: "Temperature", display: "22.4", unit: "°C", numeric: true, ts: t - 30 },
-        { key: "humidity", label: "Humidity", display: "41", unit: "%", level: "good", numeric: true, ts: t - 30 },
-        { key: "linkquality", label: "Link Quality", display: "142", unit: "LQI", numeric: true, ts: t - 30 },
+        { key: "pm25", label: "PM2.5", display: "18", unit: "µg/m³", level: "fair", numeric: true, ts: t - 30,
+          decimals: 0, h: demoHistory(14, 6, 0) },
+        { key: "voc_index", label: "VOC Index", display: "96", unit: "", level: "good", numeric: true, ts: t - 30,
+          decimals: 0, h: demoHistory(100, 25, 3) },
+        { key: "temperature", label: "Temperature", display: "22.4", unit: "°C", numeric: true, ts: t - 30,
+          decimals: 1, h: demoHistory(22, 1.2, 6) },
+        { key: "humidity", label: "Humidity", display: "41", unit: "%", level: "good", numeric: true, ts: t - 30,
+          decimals: 0, h: demoHistory(42, 4, 1) },
+        { key: "linkquality", label: "Link Quality", display: "142", unit: "LQI", numeric: true, ts: t - 30,
+          decimals: 0, h: [[2, 140], [1, 141], [0, 142]] },
         { key: "co2", label: "CO\u2082", display: "--", unit: "ppm", numeric: false, missing: true }
       ]
     });
@@ -466,11 +780,32 @@
 
   function connect() {
     try { window.C4.subscribeToDataToUi(true); } catch (e) { log("subscribe failed: " + e); }
-    request();
-    setInterval(request, POLL_MS);
+    historyAskedAt = new Date().getTime();
+    request(true);
+    setInterval(function () { request(false); }, POLL_MS);
+  }
+
+  function closest(el, attr) {
+    while (el && el !== document) {
+      if (el.getAttribute && el.getAttribute(attr) !== null) { return el; }
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function bindTaps() {
+    $("grid").addEventListener("click", function (e) {
+      var tile = closest(e.target, "data-key");
+      if (tile) { openChart(tile.getAttribute("data-key")); }
+    });
+    $("overlay").addEventListener("click", function (e) {
+      // Close on the backdrop or the close button, not inside the chart
+      if (e.target === $("overlay") || closest(e.target, "id") === $("chartClose")) { closeChart(); }
+    });
   }
 
   function start() {
+    bindTaps();
     setInterval(renderStatus, TICK_MS);
     // The navigator injects the C4 object; give it a moment in case it lands late
     var tries = 0;

@@ -333,6 +333,26 @@ function M.lookup(values, name)
   return nil, nil
 end
 
+--- Apply the Temperature Display setting to a number of a known type.
+--- @param def table|nil Known definition of the field.
+--- @param num number|nil
+--- @param config table
+--- @return number|nil num, string|nil unit Converted value, and the unit when it changes.
+function M.convert(def, num, config)
+  if not (def and def.unit == "°C") then
+    return num, nil
+  end
+  local mode = config and config.tempConversion
+  if mode == "Celsius to Fahrenheit" then
+    return num and (num * 9 / 5 + 32), "°F"
+  elseif mode == "Fahrenheit to Celsius" then
+    return num and ((num - 32) * 5 / 9), nil
+  elseif mode == "Source is Fahrenheit" then
+    return num, "°F"
+  end
+  return num, nil
+end
+
 --- One display field for a key and its stored entry (nil entry -> placeholder).
 --- @param key string
 --- @param entry table|any|nil
@@ -349,16 +369,9 @@ local function makeField(key, entry, config)
   local display
 
   -- Temperature conversion applies to anything recognised as a temperature
-  if def and def.unit == "°C" then
-    if config.tempConversion == "Celsius to Fahrenheit" then
-      num = num and (num * 9 / 5 + 32)
-      unit = "°F"
-    elseif num and config.tempConversion == "Fahrenheit to Celsius" then
-      num = (num - 32) * 5 / 9
-    elseif config.tempConversion == "Source is Fahrenheit" then
-      unit = "°F"
-    end
-  end
+  local convertedUnit
+  num, convertedUnit = M.convert(def, num, config)
+  unit = convertedUnit or unit
 
   if raw == nil then
     display = M.NO_VALUE
@@ -382,6 +395,7 @@ local function makeField(key, entry, config)
     unit = unit,
     level = M.grade(def, num),
     numeric = num ~= nil,
+    decimals = decimals,
     missing = raw == nil or nil,
     ts = type(entry) == "table" and entry.ts or nil,
     _rank = def and def.rank or 30,
