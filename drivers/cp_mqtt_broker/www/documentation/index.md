@@ -36,7 +36,7 @@ is added first.
 
 ## Driver Suite
 
-The MQTT driver suite consists of six drivers:
+The MQTT driver suite consists of seven drivers:
 
 | Driver                     | Direction     | Purpose                                                                                                 |
 | -------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
@@ -44,6 +44,7 @@ The MQTT driver suite consists of six drivers:
 | **MQTT General**           | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics)         |
 | **MQTT Light**             | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)                    |
 | **MQTT Shutter**           | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)                 |
+| **MQTT Fan**               | Bidirectional | One MQTT fan as a native Control4 fan (on/off, speeds, preset, reverse)                                 |
 | **MQTT Thermostat**        | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity)      |
 | **MQTT General w Webview** | Inbound       | MQTT values (air-quality sensors, ...) as a WebView button in Comfort, on touch screens and in the apps |
 
@@ -53,6 +54,7 @@ The MQTT driver suite consists of six drivers:
 1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
 1. Add one **MQTT Shutter** per shutter or blind (Tasmota, Shelly, Zigbee2MQTT,
    ...)
+1. Add one **MQTT Fan** per fan (Tasmota iFan, Zigbee2MQTT, Shelly relay, ...)
 1. Add one **MQTT Thermostat** per thermostat (Tasmota, TuyaMCU, ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
@@ -90,8 +92,8 @@ The MQTT driver suite consists of six drivers:
   MQTT 3.1 and 3.1.1, retained messages, Last Will, wildcards
 - **External broker** with username/password authentication and automatic
   reconnection
-- **Tasmota discovery**: finds Tasmota devices so the MQTT Light driver can set
-  itself up from a list
+- **Tasmota discovery**: finds Tasmota devices so the MQTT Light, Shutter and
+  Fan drivers can set themselves up from a list
 - **Shelly discovery**: finds Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) and
   their dimmer, CCT, RGB, RGBW and relay outputs, for the same list
 - Manages subscriptions for connected child drivers
@@ -107,7 +109,7 @@ The MQTT driver suite consists of six drivers:
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
    the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`,
-   `cp_mqtt_shutter.c4z`, `cp_mqtt_thermostat.c4z` and
+   `cp_mqtt_shutter.c4z`, `cp_mqtt_fan.c4z`, `cp_mqtt_thermostat.c4z` and
    `cp_mqtt_general_webview.c4z` drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to

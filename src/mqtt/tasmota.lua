@@ -164,6 +164,7 @@ function Tasmota.parse(payload)
     switches = switches,
     shutterTilt = sht,
     shutterOptions = sho,
+    ifan = num(t["if"]) == 1,
   }
 end
 
@@ -356,6 +357,7 @@ function Tasmota.summary(dev)
     loads = loads,
     buttons = #Tasmota.buttons(dev),
     shutters = Tasmota.shutters(dev),
+    fans = Tasmota.fans(dev),
   }
 end
 
@@ -450,6 +452,58 @@ function Tasmota.shutterName(dev, id)
     end
   end
   return nil
+end
+
+--- Fans on the device: a Sonoff iFan (discovery "if": 1) has one, run with
+--- FanSpeed 0 (off) to 3 and reported as FanSpeed on stat/<topic>/RESULT.
+--- @param dev table
+--- @return table[] { id, label }
+function Tasmota.fans(dev)
+  if not dev.ifan then
+    return {}
+  end
+  return { { id = "fan", label = "Fan" } }
+end
+
+--- MQTT Fan property values for the iFan's fan.
+--- @param dev table
+--- @param id string "fan"
+--- @return table|nil props, string|nil err
+function Tasmota.fanProperties(dev, id)
+  if id ~= "fan" or not dev.ifan then
+    return nil, "no fan on " .. tostring(dev.topic)
+  end
+  return {
+    ["Payload Mode"] = "Separate Topics",
+    ["Power State Topic"] = "",
+    ["Power Value Path"] = "",
+    ["Power Command Topic"] = "",
+    ["Speed State Topic"] = Tasmota.topicFor(dev, 2, "RESULT"),
+    ["Speed Value Path"] = "$.FanSpeed",
+    ["Speed Command Topic"] = Tasmota.topicFor(dev, 1, "FanSpeed"),
+    ["Speed Values"] = "1,2,3",
+    ["Speed Off Value"] = "0",
+    ["Direction State Topic"] = "",
+    ["Direction Command Topic"] = "",
+    ["State Request Topic"] = Tasmota.topicFor(dev, 1, "STATE"),
+    ["State Request Payload"] = "",
+    ["Availability Topic"] = Tasmota.topicFor(dev, 3, "LWT"),
+    ["Availability Value Path"] = "",
+    ["Payload Available"] = dev.online,
+    ["Payload Not Available"] = dev.offline,
+  }
+end
+
+--- A Control4 name for a fan: the device name.
+function Tasmota.fanName(dev, id)
+  if id ~= "fan" or not dev.ifan then
+    return nil
+  end
+  local base = dev.name
+  if base == nil or base == "" or base:match("^Tasmota%d*$") then
+    base = dev.topic
+  end
+  return base .. " Fan"
 end
 
 --- Tasmota button actions (SetOption73 1).
