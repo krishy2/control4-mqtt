@@ -165,6 +165,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .tile .value.missing { color: var(--muted); }
   .tile .value.text { font-size: 22px; font-weight: 400; white-space: normal; word-break: break-word; }
   .tile .meta .c-good + .age, .tile .meta .c-fair + .age,
   .tile .meta .c-poor + .age, .tile .meta .c-bad + .age { margin-left: 8px; }
@@ -372,7 +373,8 @@
     for (var i = 0; i < d.fields.length; i++) {
       var f = d.fields[i];
       var cls = "tile" + (f.level ? " lvl-" + f.level : "");
-      var valueCls = "value" + (f.numeric ? "" : " text");
+      // A Field Order entry without a value yet: "--", dimmed, in the number style
+      var valueCls = "value" + (f.missing ? " missing" : (f.numeric ? "" : " text"));
       html.push(
         "<div class=\"" + cls + "\">" +
           "<div class=\"bar\"></div>" +
@@ -451,7 +453,8 @@
         { key: "voc_index", label: "VOC Index", display: "96", unit: "", level: "good", numeric: true, ts: t - 30 },
         { key: "temperature", label: "Temperature", display: "22.4", unit: "°C", numeric: true, ts: t - 30 },
         { key: "humidity", label: "Humidity", display: "41", unit: "%", level: "good", numeric: true, ts: t - 30 },
-        { key: "linkquality", label: "Link Quality", display: "142", unit: "LQI", numeric: true, ts: t - 30 }
+        { key: "linkquality", label: "Link Quality", display: "142", unit: "LQI", numeric: true, ts: t - 30 },
+        { key: "co2", label: "CO\u2082", display: "--", unit: "ppm", numeric: false, missing: true }
       ]
     });
   }

@@ -68,6 +68,9 @@ connects to MQTT itself.
 - Air-quality grading (Good, Fair, Poor, Bad) for PM2.5, PM10, VOC index, tVOC,
   CO₂, AQI, humidity and battery, on the tiles and on the navigator icon
 - A Control4 variable per value, plus an `Air Quality` variable, for programming
+- Fields that arrive in separate messages are kept, and the fields in Field
+  Order are always shown
+- A list of every field ever received, with one-click copy to Field Order
 - Hide, reorder and relabel fields from Composer
 - Stale data detection
 - Connects itself to the MQTT Broker driver
@@ -89,6 +92,10 @@ connects to MQTT itself.
 
 1. Set [MQTT Topics](#mqtt-topics), for example `zigbee2mqtt/Vindstyrka`. Use
    the same topic as the MQTT General item that already reads the device.
+
+1. When the values have arrived, choose **Copy All to Field Order** in Received
+   Fields Action, then edit Field Order to keep the fields you want, in the
+   order you want.
 
 1. Show the button in Comfort. Like every WebView driver, Control4 adds it
    hidden: in **System Design**, select the room, open **Navigators** in the
@@ -125,8 +132,8 @@ Sets the logging mode. Default is `Off`.
 ##### MQTT Topics
 
 The topics to read, separated by commas. Each topic must be written out in full;
-wildcards are not used. A new message on a topic replaces all values received
-earlier on that topic.
+wildcards are not used. Fields may arrive in separate messages: each field keeps
+its last value until a new one arrives.
 
 ##### QoS
 
@@ -147,12 +154,35 @@ Auto follows the device's light or dark setting where the device supports it.
 
 ##### Field Order
 
-Keys to show first, in order, for example `pm25,voc_index,temperature,humidity`.
-Other fields follow: graded air readings first, then the rest.
+The fields to show, in order, for example `pm25,voc_index,temperature,humidity`.
+These fields are always shown, even before a value has arrived (they show `--`
+until then) and even when Hidden Fields matches them. Fields that are not listed
+are not shown. Leave it empty to show every received field, graded air readings
+first.
+
+The easiest way to fill it is
+[Copy All to Field Order](#received-fields-action--copy-all-to-field-order--clear-),
+then delete the fields you do not want and reorder the rest.
+
+##### Received Fields (read-only)
+
+Every field ever received over MQTT, separated by commas. Devices that send one
+field per message add to the list as each field arrives. The list is kept across
+restarts.
+
+##### Received Fields Action [ Copy All to Field Order | Clear ]
+
+- **Copy All to Field Order** puts every field in Received Fields into Field
+  Order, except those matched by Hidden Fields.
+- **Clear** empties Received Fields; it fills again as fields arrive. Field
+  Order and the shown values are not changed.
+
+The list returns to `(Select)` after each use.
 
 ##### Hidden Fields
 
-Keys to hide, separated by commas. `*` is a wildcard. The default
+Keys to hide when Field Order is empty, and to leave out of Copy All to Field
+Order, separated by commas. `*` is a wildcard. The default
 `update*,last_seen,identify` hides the Zigbee2MQTT firmware update details.
 
 ##### Field Labels

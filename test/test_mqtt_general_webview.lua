@@ -58,19 +58,48 @@ T.eq("VOC index of 96 is good", f.voc_index.level, "good")
 T.eq("worst level wins", fields.worstLevel(list), "fair")
 T.eq("graded air readings sort first", keys(list), { "pm25", "voc_index", "temperature", "humidity", "linkquality" })
 
-T.section("ordering, labels and conversion")
+T.section("labels and conversion")
 list = fields.build(values, {
   hidden = { "update*" },
-  order = { "temperature", "humidity" },
   overrides = fields.parseOverrides("pm25=Fine dust; voc_index=Air|; linkquality=Signal|lqi"),
   tempConversion = "Celsius to Fahrenheit",
 })
 f = byKey(list)
-T.eq("Field Order puts keys first", { list[1].key, list[2].key }, { "temperature", "humidity" })
 T.eq("label override keeps default unit", { f.pm25.label, f.pm25.unit }, { "Fine dust", "µg/m³" })
 T.eq("empty unit after | removes it", { f.voc_index.label, f.voc_index.unit }, { "Air", "" })
 T.eq("custom unit", f.linkquality.unit, "lqi")
 T.eq("C to F conversion", { f.temperature.display, f.temperature.unit }, { "72.4", "°F" })
+
+T.section("Field Order is the display list")
+list = fields.build(values, { hidden = { "update*", "temperature" }, order = { "temperature", "co2", "Humidity" } })
+T.eq("exactly the Field Order fields, in order", keys(list), { "temperature", "co2", "humidity" })
+T.eq("a listed field shows even if Hidden Fields matches it", list[1].display, "22.4")
+T.eq("a field with no value yet shows a placeholder", { list[2].display, list[2].missing }, { "--", true })
+T.eq("which still gets its label and unit", { list[2].label, list[2].unit }, { "CO₂", "ppm" })
+T.eq("case-insensitive match", list[3].display, "41")
+list = fields.build({ ["sensors.pm25"] = { value = 7 } }, { order = { "pm25" } })
+T.eq("matches the last segment of a nested key", { list[1].key, list[1].display }, { "sensors.pm25", "7" })
+
+T.section("the received fields catalog")
+local received = {
+  temperature = true,
+  pm25 = true,
+  update_available = true,
+  ["update.state"] = true,
+  linkquality = true,
+}
+T.eq("everything, in display order", fields.catalog(received), {
+  "pm25",
+  "temperature",
+  "update.state",
+  "update_available",
+  "linkquality",
+})
+T.eq(
+  "Hidden Fields left out for copying",
+  fields.catalog(received, { "update*" }),
+  { "pm25", "temperature", "linkquality" }
+)
 
 T.section("non-JSON payloads")
 flat = fields.decodePayload("home/office/co2", " 1450 ", decode)
@@ -146,6 +175,8 @@ for k, v in pairs({
   ["Title"] = "",
   ["Theme"] = "Dark",
   ["Field Order"] = "",
+  ["Received Fields"] = "",
+  ["Received Fields Action"] = "(Select)",
   ["Hidden Fields"] = "update*,last_seen,identify",
   ["Field Labels"] = "",
   ["Temperature Display"] = "As Received",
@@ -252,6 +283,51 @@ T.eq("old values cleared", props["Current Values"], "")
 T.eq("their variables deleted", Variables["pm25"], nil)
 ExecuteCommand("MQTT_MESSAGE", { topic = "home/co2", payload = "1450" })
 T.eq("plain payload named after topic", Variables["co2"], "1450")
+
+T.section("fields arrive in separate messages")
+Properties["MQTT Topics"] = "vindstyrka"
+OnPropertyChanged("MQTT Topics")
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":5}' })
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"temperature":21.5}' })
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"humidity":44,"update":{"state":"idle"}}' })
+T.eq(
+  "earlier fields are kept",
+  { Variables["pm25"], Variables["temperature"], Variables["humidity"] },
+  { "5", "21.5", "44" }
+)
+T.eq(
+  "Received Fields lists every field ever received",
+  props["Received Fields"],
+  "co2,pm25,voc_index,temperature,humidity,update.state,linkquality"
+)
+T.contains("including hidden ones", props["Received Fields"], "update.state")
+T.contains("and fields from earlier topics", props["Received Fields"], "voc_index")
+
+T.section("Copy All to Field Order")
+Properties["Received Fields Action"] = "Copy All to Field Order"
+OnPropertyChanged("Received Fields Action")
+T.eq(
+  "Field Order gets every received field but the hidden ones",
+  props["Field Order"],
+  "co2,pm25,voc_index,temperature,humidity,linkquality"
+)
+T.eq("the dropdown goes back to (Select)", props["Received Fields Action"], "(Select)")
+reply = UIRequest("GET_DASHBOARD", {})
+json = string.match(reply, "<dashboard>(.*)</dashboard>")
+json = string.gsub(json, "&quot;", '"')
+json = string.gsub(json, "&amp;", "&")
+d = JSON:decode(json)
+T.eq("the web view shows all of them", #d.fields, 6)
+T.eq("with -- for fields not received on this topic", { d.fields[3].key, d.fields[3].display }, { "voc_index", "--" })
+T.eq("no variable for a field without a value", Variables["voc_index"], nil)
+
+T.section("Clear")
+Properties["Received Fields Action"] = "Clear"
+OnPropertyChanged("Received Fields Action")
+T.eq("Received Fields emptied", props["Received Fields"], "")
+T.eq("Field Order kept", props["Field Order"], "co2,pm25,voc_index,temperature,humidity,linkquality")
+ExecuteCommand("MQTT_MESSAGE", { topic = "vindstyrka", payload = '{"pm25":6}' })
+T.eq("and it fills again as fields arrive", props["Received Fields"], "pm25")
 
 T.section("broker disconnects")
 ReceivedFromProxy(5002, "BROKER_DISCONNECTED", {})

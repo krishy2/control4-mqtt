@@ -160,13 +160,31 @@
         <name>Field Order</name>
         <type>STRING</type>
         <default/>
-        <description>Keys to show first, comma separated (e.g. pm25,voc_index,temperature,humidity). Others follow.</description>
+        <description>Fields to show, in this order, comma separated (e.g. pm25,voc_index,temperature,humidity). They are always shown, with -- until a value arrives. Empty shows every received field.</description>
+      </property>
+      <property>
+        <name>Received Fields</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Every field ever received over MQTT.</description>
+      </property>
+      <property>
+        <name>Received Fields Action</name>
+        <type>LIST</type>
+        <default>(Select)</default>
+        <items>
+          <item>(Select)</item>
+          <item>Copy All to Field Order</item>
+          <item>Clear</item>
+        </items>
+        <description>Copy All to Field Order puts every received field (except Hidden Fields) in Field Order. Clear empties Received Fields.</description>
       </property>
       <property>
         <name>Hidden Fields</name>
         <type>STRING</type>
         <default>update*,last_seen,identify</default>
-        <description>Keys to hide, comma separated. * is a wildcard (e.g. update*).</description>
+        <description>Keys to hide when Field Order is empty, and to leave out of Copy All to Field Order. * is a wildcard (e.g. update*).</description>
       </property>
       <property>
         <name>Field Labels</name>
