@@ -18,6 +18,18 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103001 - 2026-10-30
+
+### Changed
+
+- MQTT Web View is now **MQTT General w Webview**
+  (`cp_mqtt_general_webview.c4z`) and is built like Control4's WebView driver: a
+  driver with its own Experience button (no longer a combo driver), so it can be
+  shown in a room's Comfort menu, or Listen, Watch and Security, on touch
+  screens and in the apps. It sends the web view address and icon once the
+  button is ready. Delete `cp_mqtt_webview` from projects and add MQTT General w
+  Webview; the old file is no longer updated.
+
 ## v2026103000 - 2026-10-30
 
 ### Added

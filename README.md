@@ -25,14 +25,14 @@ is added first.
 
 The MQTT driver suite consists of six drivers:
 
-| Driver              | Direction     | Purpose                                                                                            |
-| ------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
-| **MQTT Broker**     | N/A           | The MQTT connection: an external broker, or the built-in one                                       |
-| **MQTT General**    | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics)    |
-| **MQTT Light**      | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)               |
-| **MQTT Shutter**    | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)            |
-| **MQTT Thermostat** | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity) |
-| **MQTT Web View**   | Inbound       | MQTT values (air-quality sensors, ...) on a web view for touch screens and the mobile apps         |
+| Driver                     | Direction     | Purpose                                                                                                 |
+| -------------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| **MQTT Broker**            | N/A           | The MQTT connection: an external broker, or the built-in one                                            |
+| **MQTT General**           | Inbound       | External MQTT device -> Control4 (create relays, contacts, buttons, variables from MQTT topics)         |
+| **MQTT Light**             | Bidirectional | One MQTT light as a native Control4 light (on/off, dimmer, color temperature, color)                    |
+| **MQTT Shutter**           | Bidirectional | One MQTT shutter or blind as a native Control4 blind (position, open/close/stop, slats)                 |
+| **MQTT Thermostat**        | Bidirectional | One MQTT thermostat as a native Control4 thermostat (temperature, setpoints, modes, fan, humidity)      |
+| **MQTT General w Webview** | Inbound       | MQTT values (air-quality sensors, ...) as a WebView button in Comfort, on touch screens and in the apps |
 
 **Typical Setup:**
 
@@ -43,8 +43,8 @@ The MQTT driver suite consists of six drivers:
 1. Add one **MQTT Thermostat** per thermostat (Tasmota, TuyaMCU, ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
    sensors
-1. Add **MQTT Web View** to show an MQTT device's values on touch screens and in
-   the mobile apps
+1. Add **MQTT General w Webview** to show an MQTT device's values as a WebView
+   button in Comfort, on touch screens and in the mobile apps
 
 # <span style="color:#660066">Index</span>
 
@@ -94,8 +94,8 @@ The MQTT driver suite consists of six drivers:
 
 1. [Install](<(https://www.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/adding_drivers_manually.htm)>)
    the `cp_mqtt_broker.c4z`, `cp_mqtt_general.c4z`, `cp_mqtt_light.c4z`,
-   `cp_mqtt_shutter.c4z`, `cp_mqtt_thermostat.c4z` and `cp_mqtt_webview.c4z`
-   drivers.
+   `cp_mqtt_shutter.c4z`, `cp_mqtt_thermostat.c4z` and
+   `cp_mqtt_general_webview.c4z` drivers.
 
 1. In Composer's "Search" tab, search for "MQTT Broker" and add the driver to
    your project.
@@ -386,6 +386,18 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026103001 - 2026-10-30
+
+### Changed
+
+- MQTT Web View is now **MQTT General w Webview**
+  (`cp_mqtt_general_webview.c4z`) and is built like Control4's WebView driver: a
+  driver with its own Experience button (no longer a combo driver), so it can be
+  shown in a room's Comfort menu, or Listen, Watch and Security, on touch
+  screens and in the apps. It sends the web view address and icon once the
+  button is ready. Delete `cp_mqtt_webview` from projects and add MQTT General w
+  Webview; the old file is no longer updated.
 
 ## v2026103000 - 2026-10-30
 

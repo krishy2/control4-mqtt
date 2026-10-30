@@ -1,11 +1,11 @@
--- Tests for the MQTT Web View: the field model (src/mqtt/dashboard.lua) and the
+-- Tests for MQTT General w Webview: the field model (src/mqtt/dashboard.lua) and the
 -- driver end to end in the C4 shim (broker connect, subscription, an MQTT
 -- message, variables, and what the web view receives).
 --
 -- Run from the repo root:
 --   make test
 -- or:
---   ./test/run_test.sh test_mqtt_webview.lua
+--   ./test/run_test.sh test_mqtt_general_webview.lua
 
 local T = require("testlib")
 local JSON = require("JSON")
@@ -113,9 +113,9 @@ function C4:UpdateProperty(name, value)
   Properties[name] = value
 end
 function C4:GetDriverFileName()
-  return "cp_mqtt_webview.c4z"
+  return "cp_mqtt_general_webview.c4z"
 end
-local xmlText = io.open("drivers/cp_mqtt_webview/driver.xml"):read("*a")
+local xmlText = io.open("drivers/cp_mqtt_general_webview/driver.xml"):read("*a")
 function C4:GetDriverConfigInfo(key)
   if key == "version" then
     return "20261030"
@@ -163,9 +163,20 @@ end
 
 ShimSetDevices({
   [900] = { deviceName = "MQTT Broker", driverFileName = "cp_mqtt_broker.c4z" },
-  [12345] = { deviceName = "Test Device", driverFileName = "cp_mqtt_webview.c4z" },
+  [12345] = { deviceName = "Test Device", driverFileName = "cp_mqtt_general_webview.c4z" },
 })
-dofile("drivers/cp_mqtt_webview/driver.lua")
+dofile("drivers/cp_mqtt_general_webview/driver.lua")
+
+T.section("a WebView driver like webview.c4z")
+T.eq("named MQTT General w Webview", string.match(xmlText, "<name>(.-)</name>"), "MQTT General w Webview")
+T.check("not a combo driver, so the Experience button is its own device", not xmlText:find("<combo>", 1, true))
+T.contains("uibutton proxy", xmlText, ">uibutton</proxy>")
+T.contains("shown in the mobile apps", xmlText, "<mobile_web_view_enabled>true</mobile_web_view_enabled>")
+T.contains(
+  "web view URL in this driver",
+  xmlText,
+  '<web_view_url proxybindingid="5001">controller://driver/cp_mqtt_general_webview/dashboard/index.html</web_view_url>'
+)
 
 T.section("startup")
 OnDriverInit()
@@ -174,9 +185,17 @@ T.eq("it connects itself to the broker", C4:GetBoundProviderDevice(12345, 5002),
 T.eq(
   "URL points at this driver's page",
   props["Web View URL"],
-  "controller://driver/cp_mqtt_webview/dashboard/index.html"
+  "controller://driver/cp_mqtt_general_webview/dashboard/index.html"
 )
-T.eq("URL_CHANGED sent to the UI Button proxy", sentOf("URL_CHANGED")[1].binding, 5001)
+T.eq("URL waits for the proxy, as in webview.c4z", #sentOf("URL_CHANGED"), 0)
+ShimFireTimers()
+T.eq("then URL_CHANGED goes to the uibutton proxy", sentOf("URL_CHANGED")[1].binding, 5001)
+T.eq(
+  "with the page in this driver",
+  sentOf("URL_CHANGED")[1].params.url,
+  "controller://driver/cp_mqtt_general_webview/dashboard/index.html"
+)
+T.eq("and the icon", sentOf("ICON_CHANGED")[1].params.icon, "unknown")
 T.eq("asks broker for status", sentOf("GET_STATUS")[1].binding, 5002)
 T.eq("no subscription before the broker is up", #sentOf("SUBSCRIBE"), 0)
 

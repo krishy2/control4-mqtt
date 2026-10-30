@@ -1,8 +1,8 @@
 <devicedata>
-  <name>MQTT Web View</name>
+  <name>MQTT General w Webview</name>
   <version/>
   <manufacturer>Control Pro</manufacturer>
-  <model>MQTT Web View</model>
+  <model>MQTT General w Webview</model>
   <creator>Chris Toth</creator>
   <small image_source="c4z">icons/device_sm.png</small>
   <large image_source="c4z">icons/device_lg.png</large>
@@ -11,13 +11,12 @@
   <copyright>Copyright 2026 Control Pro. All rights reserved.</copyright>
   <created>10/30/2026 12:00:00 PM</created>
   <modified/>
-  <combo>true</combo>
   <minimum_os_version>3.3.0</minimum_os_version>
   <composer_categories>
     <category>Misc</category>
   </composer_categories>
   <proxies>
-    <proxy proxybindingid="5001" name="MQTT Web View" image_source="c4z" small_image="icons/device_sm.png" large_image="icons/device_lg.png">uibutton</proxy>
+    <proxy proxybindingid="5001" name="MQTT General w Webview" image_source="c4z" small_image="icons/device_sm.png" large_image="icons/device_lg.png">uibutton</proxy>
   </proxies>
   <conditionals/>
   <events>
@@ -218,41 +217,48 @@
     </properties>
   </config>
   <capabilities>
-    <!-- Page served by the controller from this driver's www/ folder. The path segment
-         after controller://driver/ MUST equal the .c4z file name; the driver also sends
-         URL_CHANGED at startup with the name it was actually installed as. -->
-    <web_view_url proxybindingid="5001">controller://driver/cp_mqtt_webview/dashboard/index.html</web_view_url>
+    <!-- Laid out like Control4's WebView driver (webview.c4z): a protocol driver (not a
+         combo) with a uibutton proxy, so Composer adds a device that can be shown in a
+         room's Comfort (or any Experience) menu. The page is served by the controller from
+         this driver's www/ folder; the path after controller://driver/ MUST equal the .c4z
+         file name, and the driver re-sends URL_CHANGED with its real file name. -->
+    <web_view_url proxybindingid="5001">controller://driver/cp_mqtt_general_webview/dashboard/index.html</web_view_url>
     <!-- Show the web view in the iOS/Android apps as well (OS 3.1.3+, app 321.46+). -->
     <mobile_web_view_enabled>true</mobile_web_view_enabled>
     <navigator_display_option proxybindingid="5001">
+      <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_70.png</Icon>
+      <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_90.png</Icon>
+      <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_300.png</Icon>
       <display_icons>
-        <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/unknown_300.png</Icon>
-        <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/unknown_90.png</Icon>
-        <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/unknown_70.png</Icon>
+        <state id="default">
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_300.png</Icon>
+        </state>
         <state id="unknown">
-          <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/unknown_300.png</Icon>
-          <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/unknown_90.png</Icon>
-          <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/unknown_70.png</Icon>
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/unknown_300.png</Icon>
         </state>
         <state id="good">
-          <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/good_300.png</Icon>
-          <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/good_90.png</Icon>
-          <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/good_70.png</Icon>
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/good_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/good_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/good_300.png</Icon>
         </state>
         <state id="fair">
-          <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/fair_300.png</Icon>
-          <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/fair_90.png</Icon>
-          <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/fair_70.png</Icon>
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/fair_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/fair_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/fair_300.png</Icon>
         </state>
         <state id="poor">
-          <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/poor_300.png</Icon>
-          <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/poor_90.png</Icon>
-          <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/poor_70.png</Icon>
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/poor_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/poor_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/poor_300.png</Icon>
         </state>
         <state id="bad">
-          <Icon width="300" height="300">controller://driver/cp_mqtt_webview/icons/nav/bad_300.png</Icon>
-          <Icon width="90" height="90">controller://driver/cp_mqtt_webview/icons/nav/bad_90.png</Icon>
-          <Icon width="70" height="70">controller://driver/cp_mqtt_webview/icons/nav/bad_70.png</Icon>
+          <Icon height="70" width="70">controller://driver/cp_mqtt_general_webview/icons/nav/bad_70.png</Icon>
+          <Icon height="90" width="90">controller://driver/cp_mqtt_general_webview/icons/nav/bad_90.png</Icon>
+          <Icon height="300" width="300">controller://driver/cp_mqtt_general_webview/icons/nav/bad_300.png</Icon>
         </state>
       </display_icons>
     </navigator_display_option>

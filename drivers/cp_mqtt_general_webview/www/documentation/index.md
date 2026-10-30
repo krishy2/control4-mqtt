@@ -22,15 +22,17 @@ ______________________________________________________________________
 > DISCLAIMER: This software is neither affiliated with nor endorsed by either
 > Control4 or MQTT.
 
-The MQTT Web View driver reads one or more MQTT topics through the MQTT Broker
-driver and shows every value it receives on a web view inside Control4. JSON
+MQTT General w Webview is a WebView driver, like Control4's own WebView driver:
+an Experience button you place in a room's Comfort menu (or Listen, Watch,
+Security). Instead of a website it shows MQTT values. It reads one or more MQTT
+topics through the MQTT Broker driver and shows every value it receives. JSON
 payloads, such as an IKEA VINDSTYRKA air-quality sensor in Zigbee2MQTT, are
 split into one tile per field.
 
-The page is part of the driver and is served by the controller. It opens from an
-Experience button, so it works on T4 and T5 touch screens and in the Control4
-iOS and Android apps, at home and remotely. All data comes from the driver on
-the controller; the page never connects to MQTT itself.
+The page is part of the driver and is served by the controller, so it works on
+T4 and T5 touch screens and in the Control4 iOS and Android apps, at home and
+remotely. All data comes from the driver on the controller; the page never
+connects to MQTT itself.
 
 # <span style="color:#660066">Index</span>
 
@@ -74,23 +76,28 @@ the controller; the page never connects to MQTT itself.
 
 ## Driver Installation
 
-1. Install `cp_mqtt_webview.c4z` with the other MQTT drivers. Keep the file
-   name: the web view address is `controller://driver/cp_mqtt_webview/...`,
-   which must match the driver file name.
+1. Install `cp_mqtt_general_webview.c4z` with the other MQTT drivers. Keep the
+   file name: the web view address is
+   `controller://driver/cp_mqtt_general_webview/...`, which must match the
+   driver file name.
 
-1. In Composer's "Search" tab, search for "MQTT Web View" and add the driver to
-   the room where the icon should appear. It connects to the MQTT Broker driver
-   by itself.
+1. In Composer's "Search" tab, search for "MQTT General w Webview" and add the
+   driver to the room where the button should appear. It connects to the MQTT
+   Broker driver by itself.
 
 ## Driver Setup
 
 1. Set [MQTT Topics](#mqtt-topics), for example `zigbee2mqtt/Vindstyrka`. Use
    the same topic as the MQTT General item that already reads the device.
 
-1. In the room's **Navigator** properties, make the driver visible in the
-   Experience menu you want (Comfort, Security, Listen or Watch).
+1. Show the button in Comfort. Like every WebView driver, Control4 adds it
+   hidden: in **System Design**, select the room, open **Navigators** in the
+   room's properties, find the driver under **Comfort** and set it to
+   **Visible**. Use the other menus (Listen, Watch, Security) the same way if
+   you want it there too.
 
-1. Refresh Navigators and tap the icon to open the web view.
+1. Refresh Navigators. The button is in the room's Comfort menu on touch screens
+   and in the app; tap it to open the web view.
 
 [`Driver Status`](#driver-status-read-only) shows `Connected` when the broker is
 connected.
