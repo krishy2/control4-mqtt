@@ -18,6 +18,22 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103002 - 2026-10-30
+
+### Changed
+
+- MQTT General w Webview: fields that arrive in separate MQTT messages are kept;
+  each field keeps its last value instead of the latest message replacing them
+  all. Field Order now lists the fields to show: they are always shown, with
+  `--` until a value arrives, and fields not listed are not shown (an empty
+  Field Order still shows every received field).
+
+### Added
+
+- MQTT General w Webview: a read-only **Received Fields** property with every
+  field ever received, and a **Received Fields Action** list with Copy All to
+  Field Order (every received field except Hidden Fields) and Clear.
+
 ## v2026103001 - 2026-10-30
 
 ### Changed

@@ -29,6 +29,12 @@ local MQTT_BINDING = 5002 -- Consumer connection to the MQTT Broker driver
 -- Persistence keys
 local VALUES_KEY = "DashboardValues"
 local VARIABLES_KEY = "DashboardVariables"
+local RECEIVED_KEY = "ReceivedFields"
+
+-- Received Fields Action list items
+local ACTION_SELECT = "(Select)"
+local ACTION_COPY = "Copy All to Field Order"
+local ACTION_CLEAR = "Clear"
 
 -- Web view page inside this driver's www/ folder
 local WEB_PATH = "dashboard/index.html"
@@ -49,6 +55,7 @@ local gLevel = nil -- current worst level
 local gIconSent = nil
 local gStale = false
 local gWebUrl = nil
+local gReceived = {} -- every field key ever received -> true
 
 -----------------------------------------------------------------------
 -- Helpers
@@ -116,6 +123,29 @@ end
 -- Persistence
 -----------------------------------------------------------------------
 
+--- Show every field ever received in the read-only Received Fields property.
+local function updateReceivedProperty()
+  UpdateProperty("Received Fields", table.concat(fields.catalog(gReceived), ","))
+end
+
+--- Remember field keys; returns true when a new one appeared.
+--- @param keys table<string, any>
+--- @return boolean
+local function recordReceived(keys)
+  local added = false
+  for key in pairs(keys) do
+    if not gReceived[key] then
+      gReceived[key] = true
+      added = true
+    end
+  end
+  if added then
+    persist:set(RECEIVED_KEY, gReceived)
+    updateReceivedProperty()
+  end
+  return added
+end
+
 local function saveValues()
   persist:set(VALUES_KEY, { values = gValues, lastUpdate = gLastUpdate })
 end
@@ -125,6 +155,12 @@ local function restoreValues()
   if type(saved) == "table" and type(saved.values) == "table" then
     gValues = saved.values
     gLastUpdate = tonumber(saved.lastUpdate)
+  end
+  local received = persist:get(RECEIVED_KEY, nil)
+  gReceived = type(received) == "table" and received or {}
+  -- Values cached by an earlier version count as received
+  for key in pairs(gValues) do
+    gReceived[key] = true
   end
 end
 
@@ -193,22 +229,25 @@ local function syncVariables(list, level)
 
   if Properties["Create Variables"] == "Yes" then
     for _, f in ipairs(list) do
-      local v = f.value
-      local varType = "STRING"
-      if type(v) == "number" then
-        varType = "FLOAT"
-      elseif type(v) == "boolean" then
-        varType = "BOOL"
-      else
-        v = f.display
+      -- A Field Order entry without a value yet gets no variable
+      if not f.missing then
+        local v = f.value
+        local varType = "STRING"
+        if type(v) == "number" then
+          varType = "FLOAT"
+        elseif type(v) == "boolean" then
+          varType = "BOOL"
+        else
+          v = f.display
+        end
+        -- values:update also writes a property of the same name, so never collide with one
+        local name = f.key
+        if Properties[name] ~= nil then
+          name = name .. " Value"
+        end
+        values:update(name, v, varType)
+        wanted[name] = true
       end
-      -- values:update also writes a property of the same name, so never collide with one
-      local name = f.key
-      if Properties[name] ~= nil then
-        name = name .. " Value"
-      end
-      values:update(name, v, varType)
-      wanted[name] = true
     end
     if level ~= nil then
       values:update(LEVEL_VARIABLE, fields.LEVEL_TEXT[level], "STRING")
@@ -385,6 +424,7 @@ function OnDriverLateInit()
     sendIcon(gLevel)
   end)
 
+  updateReceivedProperty()
   UpdateProperty("Driver Status", "Broker disconnected")
   refresh(false)
   SetTimer("StaleCheck", 30 * ONE_SECOND, checkStale, true)
@@ -451,6 +491,28 @@ OPC.Title = displayChanged
 OPC.Theme = displayChanged
 OPC.Field_Order = displayChanged
 OPC.Hidden_Fields = displayChanged
+
+--- Received Fields Action: run the chosen item, then return to (Select) so it can be
+--- chosen again.
+function OPC.Received_Fields_Action(propertyValue)
+  if propertyValue == ACTION_SELECT or IsEmpty(propertyValue) then
+    return
+  end
+  if gInitialized then
+    if propertyValue == ACTION_COPY then
+      -- Hidden Fields (e.g. update*) are left out; they can still be typed in by hand
+      local keys = fields.catalog(gReceived, fields.parseList(Properties["Hidden Fields"]))
+      log:print("Copying %d received fields to Field Order", #keys)
+      UpdateProperty("Field Order", table.concat(keys, ","), true)
+    elseif propertyValue == ACTION_CLEAR then
+      log:print("Clearing the Received Fields list")
+      gReceived = {}
+      persist:set(RECEIVED_KEY, nil)
+      updateReceivedProperty()
+    end
+  end
+  UpdateProperty("Received Fields Action", ACTION_SELECT)
+end
 OPC.Field_Labels = displayChanged
 OPC.Temperature_Display = displayChanged
 OPC.Create_Variables = displayChanged
@@ -506,13 +568,8 @@ function EC.MQTT_MESSAGE(tParams)
     return JSON:decode(s)
   end)
 
-  -- A payload replaces everything previously received on its topic
+  -- Devices often send one field per message: merge, so each field keeps its last value
   local now = os.time()
-  for key, entry in pairs(gValues) do
-    if type(entry) == "table" and entry.topic == topic then
-      gValues[key] = nil
-    end
-  end
   local count = 0
   for key, value in pairs(decoded) do
     count = count + 1
@@ -523,6 +580,7 @@ function EC.MQTT_MESSAGE(tParams)
     gValues[key] = { value = value, ts = now, topic = topic }
   end
   gLastUpdate = now
+  recordReceived(decoded)
 
   UpdateProperty("Last Message", topic .. " @ " .. os.date("%Y-%m-%d %H:%M:%S", now))
   UpdateProperty("Last Payload", string.sub(payload, 1, 1000))

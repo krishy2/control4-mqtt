@@ -305,79 +305,134 @@ function M.worstLevel(fields)
   return worst
 end
 
---- Build the ordered display field list.
---- @param values table<string, {value: any, ts: number|nil}> Current values keyed by flattened key.
---- @param config table { hidden: string[], order: string[], overrides: table, tempConversion: string }
---- @return table[] fields
-function M.build(values, config)
-  config = config or {}
-  local isHidden = M.matcher(config.hidden or {})
+--- Shown for a Field Order entry that has not received a value yet.
+M.NO_VALUE = "--"
+
+--- Find the stored value for a Field Order entry: exact key first, then a key whose
+--- last segment matches ("pm25" finds "sensors.pm25"), case-insensitive.
+--- @param values table<string, any>
+--- @param name string
+--- @return string|nil key, any entry
+function M.lookup(values, name)
+  if values[name] ~= nil then
+    return name, values[name]
+  end
+  local lname = string.lower(name)
+  local found
+  for key in pairs(values) do
+    if string.lower(key) == lname then
+      return key, values[key]
+    end
+    if found == nil and string.lower(M.lastSegment(key)) == lname then
+      found = key
+    end
+  end
+  if found then
+    return found, values[found]
+  end
+  return nil, nil
+end
+
+--- One display field for a key and its stored entry (nil entry -> placeholder).
+--- @param key string
+--- @param entry table|any|nil
+--- @param config table
+--- @return table
+local function makeField(key, entry, config)
   local overrides = config.overrides or {}
-  local orderIndex = {}
-  for i, k in ipairs(config.order or {}) do
-    orderIndex[string.lower(k)] = i
-  end
+  local raw = type(entry) == "table" and entry.value or entry
+  local def = M.known(key)
+  local ov = overrides[string.lower(key)] or overrides[string.lower(M.lastSegment(key))] or {}
+  local unit = def and def.unit or ""
+  local decimals = def and def.decimals or 2
+  local num = type(raw) == "number" and raw or nil
+  local display
 
-  local fields = {}
-  for key, entry in pairs(values or {}) do
-    local raw = type(entry) == "table" and entry.value or entry
-    if raw ~= nil and not isHidden(key) then
-      local def = M.known(key)
-      local ov = overrides[string.lower(key)] or overrides[string.lower(M.lastSegment(key))] or {}
-      local unit = def and def.unit or ""
-      local decimals = def and def.decimals or 2
-      local num = type(raw) == "number" and raw or nil
-      local display
-
-      -- Temperature conversion applies to anything recognised as a temperature
-      if num and def and def.unit == "°C" and config.tempConversion == "Celsius to Fahrenheit" then
-        num = num * 9 / 5 + 32
-        unit = "°F"
-      elseif num and def and def.unit == "°C" and config.tempConversion == "Fahrenheit to Celsius" then
-        num = (num - 32) * 5 / 9
-      elseif num and def and def.unit == "°C" and config.tempConversion == "Source is Fahrenheit" then
-        unit = "°F"
-      end
-
-      if num then
-        display = M.formatNumber(num, decimals)
-      elseif type(raw) == "boolean" then
-        display = raw and "Yes" or "No"
-      else
-        display = tostring(raw)
-      end
-
-      if ov.unit ~= nil then
-        unit = ov.unit
-      end
-
-      table.insert(fields, {
-        key = key,
-        label = ov.label or (def and def.label) or M.prettify(key),
-        value = num ~= nil and num or raw,
-        display = display,
-        unit = unit,
-        level = M.grade(def, num),
-        numeric = num ~= nil,
-        ts = type(entry) == "table" and entry.ts or nil,
-        _order = orderIndex[string.lower(key)] or orderIndex[string.lower(M.lastSegment(key))],
-        _rank = def and def.rank or 30,
-      })
+  -- Temperature conversion applies to anything recognised as a temperature
+  if def and def.unit == "°C" then
+    if config.tempConversion == "Celsius to Fahrenheit" then
+      num = num and (num * 9 / 5 + 32)
+      unit = "°F"
+    elseif num and config.tempConversion == "Fahrenheit to Celsius" then
+      num = (num - 32) * 5 / 9
+    elseif config.tempConversion == "Source is Fahrenheit" then
+      unit = "°F"
     end
   end
 
-  table.sort(fields, function(a, b)
-    if a._order or b._order then
-      if a._order and b._order then
-        return a._order < b._order
-      end
-      return a._order ~= nil
-    end
+  if raw == nil then
+    display = M.NO_VALUE
+  elseif num then
+    display = M.formatNumber(num, decimals)
+  elseif type(raw) == "boolean" then
+    display = raw and "Yes" or "No"
+  else
+    display = tostring(raw)
+  end
+
+  if ov.unit ~= nil then
+    unit = ov.unit
+  end
+
+  return {
+    key = key,
+    label = ov.label or (def and def.label) or M.prettify(key),
+    value = num ~= nil and num or raw,
+    display = display,
+    unit = unit,
+    level = M.grade(def, num),
+    numeric = num ~= nil,
+    missing = raw == nil or nil,
+    ts = type(entry) == "table" and entry.ts or nil,
+    _rank = def and def.rank or 30,
+  }
+end
+
+--- Sort fields in the default order: graded air readings first, then by rank and key.
+--- @param list table[]
+function M.sortDefault(list)
+  table.sort(list, function(a, b)
     if a._rank ~= b._rank then
       return a._rank < b._rank
     end
     return a.key < b.key
   end)
+end
+
+--- Build the ordered display field list.
+---
+--- With a Field Order, exactly those fields are shown, in that order, whether or not a
+--- value has arrived yet (devices often send one field per message): a field without a
+--- value shows NO_VALUE. Field Order entries are shown even if Hidden Fields matches them.
+--- Without a Field Order, every received field not matched by Hidden Fields is shown.
+--- @param values table<string, {value: any, ts: number|nil}> Current values keyed by flattened key.
+--- @param config table { hidden: string[], order: string[], overrides: table, tempConversion: string }
+--- @return table[] fields
+function M.build(values, config)
+  config = config or {}
+  values = values or {}
+  local fields = {}
+
+  if config.order and #config.order > 0 then
+    local seen = {}
+    for _, name in ipairs(config.order) do
+      local key, entry = M.lookup(values, name)
+      key = key or name
+      if not seen[string.lower(key)] then
+        seen[string.lower(key)] = true
+        table.insert(fields, makeField(key, entry, config))
+      end
+    end
+  else
+    local isHidden = M.matcher(config.hidden or {})
+    for key, entry in pairs(values) do
+      local raw = type(entry) == "table" and entry.value or entry
+      if raw ~= nil and not isHidden(key) then
+        table.insert(fields, makeField(key, entry, config))
+      end
+    end
+    M.sortDefault(fields)
+  end
 
   -- Strip sort helpers and cap the list
   local out = {}
@@ -385,9 +440,30 @@ function M.build(values, config)
     if i > M.MAX_FIELDS then
       break
     end
-    f._order = nil
     f._rank = nil
     table.insert(out, f)
+  end
+  return out
+end
+
+--- Keys for the Received Fields list and "Copy All to Field Order": every key ever
+--- received, in the default display order.
+--- @param received table<string, any> Set of received keys.
+--- @param hidden string[]|nil Keys left out (Hidden Fields), or nil to keep all.
+--- @return string[]
+function M.catalog(received, hidden)
+  local isHidden = M.matcher(hidden or {})
+  local list = {}
+  for key in pairs(received or {}) do
+    if not isHidden(key) then
+      local def = M.known(key)
+      table.insert(list, { key = key, _rank = def and def.rank or 30 })
+    end
+  end
+  M.sortDefault(list)
+  local out = {}
+  for _, f in ipairs(list) do
+    table.insert(out, f.key)
   end
   return out
 end
