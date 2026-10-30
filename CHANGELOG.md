@@ -18,6 +18,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103004 - 2026-10-30
+
+### Added
+
+- **MQTT Fan** (`cp_mqtt_fan.c4z`): one MQTT fan as a native Control4 fan, with
+  on/off, speeds, preset speed and reverse. Like the MQTT Light, every ability
+  comes from a property: power, speed and direction state and command topics
+  (Separate Topics), or one JSON state and command topic with keys
+  (Zigbee2MQTT). Speed Values (`low,medium,high`, `1,2,3`, `33,66,100`) and a
+  Speed Off Value fit any device; Control4 always shows 6 speed levels, and
+  Speed Mapping spreads the device's speeds over them. On, Off, Toggle, Speed
+  Up, Speed Down and Toggle Direction button links with LED colors.
+- Tasmota discovery finds iFans (Sonoff iFan02, iFan03, iFan04): pick one in the
+  MQTT Fan's Discovered Device list and every setting is filled in.
+
 ## v2026103003 - 2026-10-30
 
 ### Changed
