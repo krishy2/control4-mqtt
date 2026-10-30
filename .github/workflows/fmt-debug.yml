@@ -1,0 +1,29 @@
+name: Fmt debug
+on:
+  push:
+    branches: [debug/fmt-check]
+permissions:
+  contents: read
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Tools
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/stylua.zip" "https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-linux-$(uname -m).zip"
+          unzip -q "$RUNNER_TEMP/stylua.zip" -d "$RUNNER_TEMP/s" && sudo install "$RUNNER_TEMP/s/stylua" /usr/local/bin/
+          python3 -m pip install -q mdformat mdformat-gfm "markdown-it-py[linkify]" mdit-py-plugins pygments black
+      - name: Lua
+        if: always()
+        run: |
+          stylua --indent-type Spaces --column-width 120 --line-endings Unix --indent-width 2 --quote-style AutoPreferDouble -g '*.lua' drivers src test tools vendor
+          git diff | head -150 | sed 's/^/::error::/' ; git checkout -- .
+      - name: Markdown
+        if: always()
+        run: |
+          python3 tools/docs.py fmt --wrap 80 ./drivers/*/www/documentation/*.md *.md
+          git diff | head -150 | sed 's/^/::error::/' ; git checkout -- .
