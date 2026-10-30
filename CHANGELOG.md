@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103003 - 2026-10-30
+
+### Changed
+
+- MQTT General w Webview: an empty Title shows no heading (it no longer falls
+  back to the driver name), and the Live / Stale / Broker offline status with
+  the last update time is at the bottom of the page instead of the top right
+  corner.
+
 ## v2026103002 - 2026-10-30
 
 ### Changed

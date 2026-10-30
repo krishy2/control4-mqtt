@@ -57,25 +57,21 @@
   }
   .wrap { padding: 20px 20px 28px; max-width: 1200px; margin: 0 auto; }
 
-  header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 18px;
-  }
+  header { margin-bottom: 18px; }
+  header.none { display: none; }
   h1 {
     font-size: 26px;
     font-weight: 500;
     letter-spacing: 0.2px;
-    margin: 0 16px 6px 0;
+    margin: 0;
   }
   .status {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     font-size: 14px;
     color: var(--muted);
-    margin-bottom: 6px;
   }
   .pill {
     display: inline-block;
@@ -206,6 +202,7 @@
     color: var(--muted);
     text-align: center;
   }
+  footer .topics { margin-top: 8px; }
 
   @media (max-width: 480px) {
     .wrap { padding: 14px 12px 20px; }
@@ -217,9 +214,8 @@
 </head>
 <body class="dark">
 <div class="wrap">
-  <header>
-    <h1 id="title">MQTT</h1>
-    <div class="status"><span id="updated"></span><span id="pill" class="pill">Connecting…</span></div>
+  <header id="header" class="none">
+    <h1 id="title"></h1>
   </header>
 
   <div id="summary" class="summary">
@@ -232,7 +228,10 @@
 
   <div id="grid" class="grid"></div>
   <div id="empty" class="empty show">Waiting for data from the controller…</div>
-  <footer id="footer"></footer>
+  <footer>
+    <div class="status"><span id="updated"></span><span id="pill" class="pill">Connecting…</span></div>
+    <div id="footer" class="topics"></div>
+  </footer>
 </div>
 
 <script type="text/javascript">
@@ -365,7 +364,9 @@
 
   function render(d) {
     applyTheme(d.theme);
-    $("title").innerHTML = escapeHtml(d.title || "MQTT");
+    // No Title: no heading at all
+    $("title").innerHTML = escapeHtml(d.title || "");
+    $("header").className = d.title ? "" : "none";
     try { document.title = d.title || "MQTT"; } catch (e) {}
 
     var html = [];

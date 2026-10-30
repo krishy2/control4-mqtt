@@ -146,7 +146,7 @@ summary of what the web view shows.
 
 ##### Title
 
-Heading on the web view. Empty uses the driver's name.
+Heading at the top of the web view. Empty shows no heading.
 
 ##### Theme \[ **_Dark_** | Light | Auto \]
 
