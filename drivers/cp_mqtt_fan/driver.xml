@@ -314,6 +314,12 @@
         <description>Topic to publish speeds to (e.g. cmnd/tasmota_fan/FanSpeed)</description>
       </property>
       <property>
+        <name>Speed Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for speed commands: {value} is replaced by the speed value (from Speed Values or Speed Off Value). Empty sends the value itself. E.g. {"Device":"STARKVIND","Write":{"IkeaFanMode":{value}}} for Tasmota ZbSend.</description>
+      </property>
+      <property>
         <name>Speed Key</name>
         <type>STRING</type>
         <default/>

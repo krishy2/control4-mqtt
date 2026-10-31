@@ -520,6 +520,16 @@ function Fan:isOn()
   return (self.level or 0) > 0
 end
 
+--- A speed command payload: the Speed Command Payload template with {value}
+--- replaced, or the value itself when there is no template.
+function Fan:_speedPayload(value)
+  local template = trim(self.cfg.speedTemplate)
+  if template == "" then
+    return value
+  end
+  return (template:gsub("{value}", (tostring(value):gsub("%%", "%%%%"))))
+end
+
 --- Run the fan at a device speed (1..N), or turn it off (0).
 --- @return boolean sent
 function Fan:_sendSpeed(speed)
@@ -558,7 +568,7 @@ function Fan:_sendSpeed(speed)
     if caps.powerCmd then
       return self:_publish(self:_command("power"), cfg.payloadOff)
     elseif caps.speedCmd and notEmpty(cfg.speedOff) then
-      return self:_publish(self:_command("speed"), trim(cfg.speedOff))
+      return self:_publish(self:_command("speed"), self:_speedPayload(trim(cfg.speedOff)))
     end
     log:warn("Cannot turn the fan off: fill in a Power Command Topic, or a Speed Off Value")
     return false
@@ -569,7 +579,7 @@ function Fan:_sendSpeed(speed)
     sent = self:_publish(self:_command("power"), cfg.payloadOn) or sent
   end
   if caps.speedCmd then
-    sent = self:_publish(self:_command("speed"), values[speed]) or sent
+    sent = self:_publish(self:_command("speed"), self:_speedPayload(values[speed])) or sent
   end
   if not sent then
     log:warn("Cannot turn the fan on: fill in a Power or Speed Command Topic")

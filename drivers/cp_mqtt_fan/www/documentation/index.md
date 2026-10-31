@@ -172,6 +172,11 @@ settings (the top speed until one is chosen), or the speed the fan last ran at.
 - **Speed Off Value** - optional, the speed value that means off: `0` for
   Tasmota FanSpeed, `off` for Zigbee2MQTT `fan_mode`. With it the speed topic
   alone turns the fan on and off, and no power topic is needed.
+- **Speed Command Payload** - optional template for speed commands: `{value}` is
+  replaced by the speed value (from Speed Values or Speed Off Value). Empty
+  sends the value itself. Use it when the value has to sit inside a bigger
+  message, as with Tasmota's Zigbee `ZbSend`; see
+  [Example: Tasmota Zigbee bridge](#example-tasmota-zigbee-bridge).
 
 #### Speed Mapping \[ **_Spread over 6 Levels_** | Levels 1 to N \]
 
@@ -219,6 +224,28 @@ for an iFan with topic `bedroom_fan`:
 | Speed Key          | `fan_mode`                    |
 | Speed Values       | `low,medium,high`             |
 | Speed Off Value    | `off`                         |
+
+## Example: Tasmota Zigbee bridge
+
+An IKEA STARKVIND air purifier paired to a Tasmota Zigbee bridge (topic
+`zigbee`), controlled with `ZbSend`: `IkeaFanMode` 0 is off, 1 is auto, 10 and
+up are the speeds.
+
+| Property              | Value                                                    |
+| --------------------- | -------------------------------------------------------- |
+| Payload Mode          | Separate Topics                                          |
+| Power Command Topic   | `cmnd/zigbee/ZbSend`                                     |
+| Payload On            | `{"Device":"STARKVIND","Write":{"IkeaFanMode":1}}`       |
+| Payload Off           | `{"Device":"STARKVIND","Write":{"IkeaFanMode":0}}`       |
+| Speed Command Topic   | `cmnd/zigbee/ZbSend`                                     |
+| Speed Command Payload | `{"Device":"STARKVIND","Write":{"IkeaFanMode":{value}}}` |
+| Speed Values          | `10,20,30,40,50` (the device's values, slowest first)    |
+
+Off sends Payload Off. A speed sends Payload On first when the fan is off, then
+the speed. To show changes made at the device, add Power and Speed State Topic
+`tele/zigbee/SENSOR` with Value Path `$.ZbReceived.STARKVIND.IkeaFanMode` (the
+device name appears there with `SetOption83 1`; otherwise its short address),
+State Off `0`, and Speed Off Value `0`.
 
 ## Example: Shelly relay
 

@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026103100 - 2026-10-31
+
+### Added
+
+- MQTT Fan: Speed Command Payload, an optional template for speed commands
+  (`{value}` is the speed value), for devices that need the value inside a
+  bigger message, such as Tasmota Zigbee `ZbSend`
+  (`{"Device":"STARKVIND","Write":{"IkeaFanMode":{value}}}`).
+
 ## v2026103006 - 2026-10-30
 
 ### Added

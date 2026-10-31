@@ -262,6 +262,45 @@ f = newFan({
 f:onMessage("shellyplus1-x/status/switch:0", '{"id":0,"output":true}')
 T.eq("Shelly status output true is on", f.level, 6)
 
+T.section("Speed Command Payload template (Tasmota ZbSend, IKEA STARKVIND)")
+local zb = '{"Device":"STARKVIND","Write":{"IkeaFanMode":{value}}}'
+f = newFan({
+  mode = "Separate Topics",
+  payloadOn = '{"Device":"STARKVIND","Write":{"IkeaFanMode":1}}',
+  payloadOff = '{"Device":"STARKVIND","Write":{"IkeaFanMode":0}}',
+  speedValues = "10,20,30,40,50",
+  speedOff = "0",
+  speedTemplate = zb,
+  topics = { speed = { commandTopic = "cmnd/zigbee/ZbSend" } },
+})
+f:handleProxyCommand("SET_SPEED", { SPEED = "1" })
+T.eq("speed 1 goes in the template", published(), {
+  'cmnd/zigbee/ZbSend={"Device":"STARKVIND","Write":{"IkeaFanMode":10}}',
+})
+sent = {}
+f:handleProxyCommand("SET_SPEED", { SPEED = "6" })
+T.eq("the top speed", published(), { 'cmnd/zigbee/ZbSend={"Device":"STARKVIND","Write":{"IkeaFanMode":50}}' })
+sent = {}
+f:handleProxyCommand("SET_SPEED", { SPEED = "0" })
+T.eq("off through the Speed Off Value", published(), {
+  'cmnd/zigbee/ZbSend={"Device":"STARKVIND","Write":{"IkeaFanMode":0}}',
+})
+local noTemplate = newFan({
+  mode = "Separate Topics",
+  speedValues = "1,2,3",
+  topics = { speed = { commandTopic = "cmnd/fan/FanSpeed" } },
+})
+noTemplate:handleProxyCommand("SET_SPEED", { SPEED = "6" })
+T.eq("no template: the value itself, as before", published(), { "cmnd/fan/FanSpeed=3" })
+local percentFan = newFan({
+  mode = "Separate Topics",
+  speedValues = "10,20,30",
+  speedTemplate = "set,%{value}%",
+  topics = { speed = { commandTopic = "x/speed" } },
+})
+percentFan:handleProxyCommand("SET_SPEED", { SPEED = "4" })
+T.eq("percent signs in a template are kept", published(), { "x/speed=set,%20%" })
+
 T.section("Zigbee2MQTT (JSON)")
 local function z2mCfg()
   return {
