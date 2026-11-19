@@ -188,10 +188,12 @@ the MQTT Light's Discovered Device list as, for example,
 
 How it works: the driver sends `ZbStatus1` to every Tasmota it finds; a Zigbee
 gateway answers with its paired devices, and each is then read with
-`ZbStatus3 <device>`. A device is a light when Tasmota lists a light type
-(`~01.N` in its `Config`, set with `ZbLight`) or the On/Off and Level clusters
-(`O01`, `L01`). The list is read again when the gateway connects, every 15
-minutes, and when a device the driver does not know reports.
+`ZbStatus3 <device>`. A device is a light when it has the On/Off cluster (`O01`
+in its `Config`); its type is the light type Tasmota lists (`~01.N`, set with
+`ZbLight`), or a dimmer when it also has the Level cluster (`L01`). Sensors are
+never lights, even with a light type left over from an earlier `ZbLight`. The
+list is read again when the gateway connects, every 15 minutes, and when a
+device the driver does not know reports.
 
 Recommended on the gateway:
 

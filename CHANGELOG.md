@@ -18,6 +18,14 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111902 - 2026-11-19
+
+### Fixed
+
+- Zigbee discovery: a device counts as a light only when it has the On/Off
+  cluster. Soil moisture sensors (HOBEIAN ZG-303Z) that Tasmota had marked as a
+  light type were offered as dimmers.
+
 ## v2026111901 - 2026-11-19
 
 ### Added

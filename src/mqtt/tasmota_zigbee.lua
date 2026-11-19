@@ -8,7 +8,8 @@
 ---     "ModelId":"TS0502B","Manufacturer":"_TZ3210_a046u4au","Endpoints":[1,242],
 ---     "Config":["~01.1","O01","L01"],"ColorMode":2,...}]}
 ---
---- Config lists what Tasmota knows of the device: "~01.N" a light on endpoint 1
+--- A device is a light only with an On/Off cluster. Config lists what Tasmota
+--- knows of the device: "~01.N" a light on endpoint 1
 --- of type N (0 on/off, 1 dimmer, 2 white with color temperature, 3 RGB,
 --- 4 RGBW, 5 RGB with color temperature), "O01" On/Off and "L01" Level (brightness)
 --- on endpoint 1, "T01" temperature and so on.
@@ -216,16 +217,19 @@ end
 --- @return integer|nil type (see Zigbee.LIGHT_TYPES), nil when not a light
 --- @return integer|nil configured the type Tasmota has, when it differs
 function Zigbee.lightType(dev)
+  local c = dev.clusters or {}
+  if c.O == nil then
+    -- No On/Off cluster: not a light, whatever light type Tasmota was given
+    -- (a soil sensor can carry a "~01.1" from an earlier ZbLight).
+    return nil, nil
+  end
   local configured = dev.light and dev.light.type or nil
   local t = configured
   if t == nil or Zigbee.LIGHT_TYPES[t] == nil then
-    local c = dev.clusters or {}
     if c.L ~= nil then
       t = 1
-    elseif c.O ~= nil then
-      t = 0
     else
-      return nil, nil
+      t = 0
     end
     configured = nil
   end

@@ -74,6 +74,19 @@ T.eq("STARKVIND is not a light", #Zigbee.loads(Zigbee.build(gw, Zigbee.parseResu
 T.eq("nor is a sensor", #Zigbee.loads(Zigbee.build(gw, Zigbee.parseResult(VINDSTYRKA).devices[1])), 0)
 T.eq("on/off and level clusters without a light type: a dimmer", Zigbee.lightType({ clusters = { O = 1, L = 1 } }), 1)
 T.eq("on/off only: a switch", Zigbee.lightType({ clusters = { O = 1 } }), 0)
+local soil = Zigbee.build(gw, {
+  Device = "0x0F0C",
+  Name = "Fragipani",
+  IEEEAddr = "0xA4C13880227E6EE9",
+  ModelId = "ZG-303Z",
+  Manufacturer = "HOBEIAN",
+  Endpoints = { 1 },
+  Config = { "~01.1", "T01" },
+  Temperature = 33.6,
+  Humidity = 53,
+})
+T.eq("a soil sensor Tasmota calls a light (~01.1, no On/Off) is not one", #Zigbee.loads(soil), 0)
+T.eq("a light type alone is not enough", Zigbee.lightType({ light = { type = 2 }, clusters = {} }), nil)
 
 -------------------------------------------------------------------------------
 T.section("MQTT Light properties")
