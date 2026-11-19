@@ -55,6 +55,7 @@ up immediately, no driver reload needed.
   - [Example: Shelly](#example-shelly)
   - [Example: Zigbee2MQTT](#example-zigbee2mqtt)
   - [Example: Tasmota Zigbee bridge](#example-tasmota-zigbee-bridge)
+  - [Zigbee Troubleshooting](#zigbee-troubleshooting)
   - [How the Light Behaves](#how-the-light-behaves)
   - [Connections](#connections)
   - [Programming](#programming)
@@ -591,6 +592,83 @@ Messages without light values (for example only `LinkQuality`) are skipped. The
 short address in the state topics changes if the bulb is paired again. Without
 `SetOption89` every device reports on `tele/zigbee/SENSOR`; use that topic
 instead, with the same Value Paths.
+
+## Zigbee Troubleshooting
+
+For a Zigbee light behind a Tasmota Zigbee gateway. The commands below go in the
+gateway's console (its web page, **Tools > Console**); replace `spot1` with the
+light's name or short address. `ZbStatus` and `ZbLight` without a type only
+read.
+
+**Check what the gateway knows about the light**
+
+```
+ZbStatus3 spot1
+```
+
+- `Config` lists what the light can do: `O01` on/off, `L01` brightness, and
+  `L01.2` brightness with light type 2 (white with color temperature) set by
+  `ZbLight`. A `~01.1` entry is not a light type.
+- `LinkQuality` below about 20 means a weak radio link: commands can arrive late
+  or not at all. A mains-powered Zigbee device between the gateway and the light
+  helps.
+
+**The light is offered as a dimmer but has color temperature**
+
+Tasmota has no light type for it. Set it on the gateway, which the driver picks
+up at once:
+
+```
+ZbLight spot1,2
+```
+
+Types: 0 on/off, 1 dimmer, 2 white with color temperature, 3 RGB, 4 RGBW, 5 RGB
+with color temperature. Or set [Zigbee Light Type](#zigbee-light-type) in the
+light. Then pick the device again under Discovered Device.
+
+**Name, remove**
+
+- `ZbName 0x372D,Kitchen_spot` names a device; the name is used for the light.
+- `ZbForget spot1` removes a device that is gone; it then drops from the list.
+
+**Check that the light fades by itself**
+
+Each should change the light smoothly over 3 seconds:
+
+```
+ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}
+ZbSend {"Device":"spot1","Send":"0008!04/201E00"}
+ZbSend {"Device":"spot1","Send":"0300!0A/99001E00"}
+ZbSend {"Device":"spot1","Send":"0300!0A/C6011E00"}
+```
+
+The first two set brightness (`FE` full, `20` about 12%), the last two color
+temperature (`9900` 153 mireds, about 6500 K; `C601` 454 mireds, about 2200 K).
+`1E00` is 30 tenths of a second, low byte first. If the light jumps instead, it
+cannot fade: clear the Brightness and Color Temp Command Payloads' `{time16}`
+(use `{"Device":"spot1","Send":{"Dimmer":{value}}}` and
+`{"Device":"spot1","Send":{"CT":{value}}}`) and set
+[Fade](#fade--stepped--jump-to-target-) to Stepped.
+
+**A jump at the start of a scene**
+
+When brightness and color temperature change together, the driver sends the
+brightness first and the color temperature 250 ms later. With a two-channel bulb
+(Tuya TS0502B) the other order, or both at the same moment, makes the light
+jump. To see it on the gateway, from full brightness and cool white:
+
+```
+Backlog ZbSend {"Device":"spot1","Send":"0008!04/0D0800"}; ZbSend {"Device":"spot1","Send":"0300!0A/F4010800"}
+```
+
+is smooth, and the same two in the other order jumps.
+
+**Seeing what the driver sends**
+
+Set the light's **Log Level** to `5 - Debug` and **Log Mode** to `Print`: the
+Lua output shows each Control4 command (`SET_BRIGHTNESS_TARGET`,
+`SET_COLOR_TARGET`) and each `ZbSend` published. The gateway console shows the
+same commands arriving and the light's reports (`ZbReceived`).
 
 ## How the Light Behaves
 

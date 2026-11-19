@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111911 - 2026-11-20
+
+### Changed
+
+- MQTT Light documentation: a Zigbee Troubleshooting section with the gateway
+  console checks (ZbStatus3, ZbLight, ZbName, ZbForget, link quality), the
+  commands to check a light fades by itself, the brightness and color
+  temperature order, and how to see what the driver sends.
+
 ## v2026111910 - 2026-11-20
 
 ### Changed

@@ -215,7 +215,9 @@ temperature are sent as the standard Zigbee commands with Control4's fade time
 the bulbs fade, turn on and turn off smoothly themselves. In the MQTT Light,
 Zigbee Light Type can set what a light is when the gateway has no type for it.
 Color is not controlled through the gateway yet: on/off, brightness and color
-temperature are. Sensors, the IKEA STARKVIND and other non-light devices are not
+temperature are. Checks for a light that does not behave (light type, link
+quality, fades) are in the MQTT Light documentation, under Zigbee
+Troubleshooting. Sensors, the IKEA STARKVIND and other non-light devices are not
 listed yet.
 
 ## External Broker Setup
