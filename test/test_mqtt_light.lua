@@ -1418,12 +1418,44 @@ light:handleProxyCommand("SET_COLOR_TARGET", {
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "1000" })
 ShimFireTimers()
 local zbSent = published("cmnd/zigbee/ZbSend")
-T.eq("turning on with a color: two commands, both with the fade time", #zbSent, 2)
-local mireds, fade = zbSent[1]:match("0300!0A/(%x%x%x%x)(%x%x%x%x)")
+-- A two-channel Tuya bulb jumps when color temperature comes first or at the
+-- same moment: brightness goes first, color temperature 250 ms later.
+T.eq("brightness first, fading and turning on", zbSent, { '{"Device":"spot1","Send":"0008!04/7F0A00"}' })
+ShimFireTimers()
+zbSent = published("cmnd/zigbee/ZbSend")
+T.eq("then color temperature", #zbSent, 2)
+local mireds, fade = zbSent[2]:match("0300!0A/(%x%x%x%x)(%x%x%x%x)")
 local m = mireds and (tonumber(mireds:sub(1, 2), 16) + 256 * tonumber(mireds:sub(3, 4), 16)) or 0
-T.check("color temperature about 2200 K (455 mireds)", math.abs(m - 455) <= 5, zbSent[1])
+T.check("color temperature about 2200 K (455 mireds)", math.abs(m - 455) <= 5, zbSent[2])
 T.eq("with the same fade time", fade, "0A00")
-T.eq("brightness fades and turns on", zbSent[2], '{"Device":"spot1","Send":"0008!04/7F0A00"}')
+reset()
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(wx),
+  LIGHT_COLOR_TARGET_Y = tostring(wy),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "30", RATE = "0" })
+ShimFireTimers() -- debounce -> brightness; the color waits
+local cx, cy = Color.cctToXy(4000)
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(cx),
+  LIGHT_COLOR_TARGET_Y = tostring(cy),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "40", RATE = "0" })
+light:flush() -- sent before the waiting color's time is up
+ShimFireTimers()
+ShimFireTimers()
+local cts = {}
+for _, p in ipairs(published("cmnd/zigbee/ZbSend")) do
+  if p:find("0300!0A", 1, true) then
+    cts[#cts + 1] = p
+  end
+end
+T.eq("a newer color replaces one still waiting: only the newest goes out", #cts, 1)
+T.check("and it is the 4000 K one (250 mireds)", cts[1] and cts[1]:find("0300!0A/FA00", 1, true) ~= nil, cts[1])
 
 T.eq("no template sends the value itself", MqttLight.commandPayload("", 50), "50")
 T.eq("nil template sends the value itself", MqttLight.commandPayload(nil, "ON"), "ON")

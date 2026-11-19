@@ -575,6 +575,11 @@ instead. To check a bulb fades, run
 `ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}` on the gateway: it should go
 to full over 3 seconds.
 
+When brightness and color temperature change together (a scene, warm dimming),
+the brightness command goes first and the color temperature 250 ms later. A
+two-channel bulb such as the TS0502B jumps when the color temperature command
+comes first or at the same moment.
+
 Messages without light values (for example only `LinkQuality`) are skipped. The
 short address in the state topics changes if the bulb is paired again. Without
 `SetOption89` every device reports on `tele/zigbee/SENSOR`; use that topic

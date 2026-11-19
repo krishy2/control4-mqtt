@@ -71,6 +71,10 @@ local MIN_STEP_MS = 250
 local MAX_STEPS = 40
 -- Keypad holds on a light whose fades jump to the target step no faster than this.
 local HOLD_STEP_MS = 500
+-- A light whose commands carry the fade time gets the color this long after
+-- the brightness: a two-channel Zigbee bulb (Tuya TS0502B) jumps when a color
+-- temperature command comes first or together with the brightness command.
+local COLOR_AFTER_LEVEL_MS = 250
 -- After a command, reports of another level are taken as late (sent before the
 -- light got there) for this long, plus the fade time.
 local SETTLE_MS = 2000
@@ -1318,6 +1322,11 @@ function MqttLight:_send(cmd)
   local function send(name, value)
     self:_publish(cmdTopic(name), MqttLight.commandPayload((topics[name] or {}).commandTemplate, value, cmd.rate))
   end
+  -- A newer color replaces one still waiting to go out (a brightness-only
+  -- command leaves it to go out).
+  if cmd.color ~= nil then
+    CancelTimer(self:_timer("ColorAfterLevel"))
+  end
 
   if c.transition and cmd.rate ~= nil and cmdTopic("transition") ~= "" then
     send("transition", self:_transitionValue(cmd.rate))
@@ -1343,6 +1352,21 @@ function MqttLight:_send(cmd)
 
   local colorCarriedLevel = false
   local whiteCarriedLevel = false
+  -- Brightness first, color temperature a moment later, for lights whose
+  -- commands carry the fade time (Zigbee): the other way round they jump.
+  local colorLater = nil
+  if
+    color ~= nil
+    and level ~= nil
+    and level > 0
+    and color.mode == MqttLight.COLOR_MODE_CCT
+    and cmdTopic("colorTemp") ~= ""
+    and cmdTopic("brightness") ~= ""
+    and MqttLight.templateHasTime((topics.colorTemp or {}).commandTemplate)
+  then
+    colorLater = self:_colorTempValue(Color.xyToCct(color.x, color.y))
+    color = nil
+  end
   if color ~= nil then
     if color.mode == MqttLight.COLOR_MODE_CCT and cmdTopic("colorTemp") ~= "" then
       send("colorTemp", self:_colorTempValue(Color.xyToCct(color.x, color.y)))
@@ -1371,6 +1395,12 @@ function MqttLight:_send(cmd)
         send("white", self:_whiteValue(level))
       end
     end
+  end
+
+  if colorLater ~= nil then
+    SetTimer(self:_timer("ColorAfterLevel"), COLOR_AFTER_LEVEL_MS, function()
+      send("colorTemp", colorLater)
+    end)
   end
 end
 

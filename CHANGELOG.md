@@ -18,6 +18,16 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111909 - 2026-11-19
+
+### Fixed
+
+- MQTT Light: a scene on a Zigbee light (brightness and color temperature
+  together) jumped at the start of its fade. Tested on a TS0502B: color
+  temperature first, or both at the same moment, jumps; brightness first and
+  color temperature 250 ms later is smooth. Lights whose commands carry the fade
+  time now send them that way.
+
 ## v2026111908 - 2026-11-19
 
 ### Added
