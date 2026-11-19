@@ -206,6 +206,16 @@ connected yet.
 Shown when the chosen device has a setting that keeps this light from working
 well, for example Tasmota's `SetOption4 1`, with what to change.
 
+##### Zigbee Light Type
+
+Shown for a Zigbee light behind a Tasmota gateway: **Auto** (default), Switch,
+Dimmer or White (CT). Auto uses what the broker detected from the gateway; the
+others fill in the fields for that kind of light whatever the gateway says, for
+a bulb the gateway has no light type for. Picking another device sets it back to
+Auto. Also run `ZbLight <light>,<type>` on the gateway (2 for White): Tasmota
+uses the type to read values back from the light, and Device Notes say when the
+two differ.
+
 ##### Capabilities (read-only)
 
 The abilities the light has right now, for example

@@ -1091,6 +1091,59 @@ T.contains(
   '{"Device":"0xA4C13837E8E485BF","Send":{"Dimmer":254}}'
 )
 
+-- Zigbee Light Type: what the light is, whatever the gateway says.
+local plainDev = Zigbee.build(zbGateway, {
+  Device = "0x1582",
+  Name = "spot3",
+  IEEEAddr = "0xA4C138ECF4CCF3ED",
+  ModelId = "TS0502B",
+  Config = { "O01", "L01" },
+})
+reset()
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = zbDev.mac, device = JSON:encode(plainDev) })
+end)
+T.eq("Auto: the detected dimmer has no color temperature", Properties["Color Temp Command Topic"], "")
+T.check(
+  "and the notes suggest Zigbee Light Type",
+  tostring(propertyWrites["Device Notes"]):find("Zigbee Light Type", 1, true) ~= nil,
+  tostring(propertyWrites["Device Notes"])
+)
+Properties["Zigbee Light Type"] = "White (CT)"
+reset()
+T.capture(function()
+  OnPropertyChanged("Zigbee Light Type")
+end)
+T.eq("White (CT) fills in color temperature", {
+  Properties["Color Temp Command Topic"],
+  Properties["Color Temp Command Payload"],
+  Properties["Color Temp Value Path"],
+}, {
+  "cmnd/zigbee/ZbSend",
+  '{"Device":"0xA4C138ECF4CCF3ED","Send":{"CT":{value}}}',
+  "$.ZbReceived['0x1582'].CT",
+})
+local ctCaps = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
+T.eq("and the light does color temperature", ctCaps and ctCaps.supports_color_correlated_temperature, "true")
+T.check(
+  "the notes say the gateway differs",
+  tostring(propertyWrites["Device Notes"]):find("ZbLight spot3,2", 1, true) ~= nil,
+  tostring(propertyWrites["Device Notes"])
+)
+Properties["Zigbee Light Type"] = "Switch"
+T.capture(function()
+  OnPropertyChanged("Zigbee Light Type")
+end)
+T.eq("Switch clears brightness and color temperature", {
+  Properties["Brightness Command Topic"],
+  Properties["Color Temp Command Topic"],
+}, { "", "" })
+Properties["Zigbee Light Type"] = "Auto"
+T.capture(function()
+  OnPropertyChanged("Zigbee Light Type")
+end)
+T.eq("Auto again: the detected dimmer", Properties["Brightness Command Topic"], "cmnd/zigbee/ZbSend")
+
 -------------------------------------------------------------------------------
 T.section("Command Payload templates (Tasmota Zigbee ZbSend)")
 -------------------------------------------------------------------------------

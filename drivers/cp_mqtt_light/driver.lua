@@ -41,6 +41,15 @@ local tasmotaChoices = {}
 local tasmotaSelection = nil
 --- Set when an output is picked: rename the light once its details arrive.
 local renamePending = nil
+--- The discovered device last applied (to apply again when Zigbee Light Type changes)
+local appliedDevice = nil
+--- Zigbee Light Type -> Tasmota light type (Auto: what the broker detected)
+local ZIGBEE_LIGHT_TYPES = { ["Switch"] = 0, ["Dimmer"] = 1, ["White (CT)"] = 2 }
+
+--- Show Zigbee Light Type only for a Zigbee device.
+local function showZigbeeLightType(visible)
+  C4:SetPropertyAttribs("Zigbee Light Type", visible and constants.SHOW_PROPERTY or constants.HIDE_PROPERTY)
+end
 local updateTasmotaList, setTasmotaNotes
 
 --- Properties that make up the light configuration. A change to any of them
@@ -523,6 +532,8 @@ function OnDriverLateInit()
   buttonColors = ButtonLinks.load(persist:get(BUTTON_COLORS_PERSIST_KEY, nil))
   updateButtonLeds(true)
 
+  -- Shown again once a Zigbee device's details arrive.
+  showZigbeeLightType(false)
   tasmotaSelection = persist:get(TASMOTA_PERSIST_KEY, nil)
   updateTasmotaList()
   setTasmotaNotes("")
@@ -752,7 +763,11 @@ local function applyTasmotaDevice(dev)
     return
   end
   local codec = moduleFor(dev)
-  local props, err = codec.lightProperties(dev, selection.load)
+  local isZigbee = dev.type == Zigbee.TYPE
+  local chosen = isZigbee and ZIGBEE_LIGHT_TYPES[Properties["Zigbee Light Type"] or ""] or nil
+  showZigbeeLightType(isZigbee)
+  appliedDevice = dev
+  local props, err = codec.lightProperties(dev, selection.load, chosen)
   if props == nil then
     setTasmotaNotes("This output no longer exists on " .. dev.topic .. " (" .. tostring(err) .. ")")
     return
@@ -780,7 +795,7 @@ local function applyTasmotaDevice(dev)
   end
   table.sort(changed)
   log:info("Applied %s device %s (%s): %d settings changed", kindName(dev), dev.topic, selection.load, #changed)
-  setTasmotaNotes(table.concat(codec.notes(dev), " "))
+  setTasmotaNotes(table.concat(codec.notes(dev, chosen), " "))
 
   if renamePending and renamePending.mac == selection.mac and renamePending.load == selection.load then
     renamePending = nil
@@ -807,8 +822,10 @@ function OPC.Discovered_Device(propertyValue)
       log:info("Discovered device cleared; settings stay as they are")
     end
     tasmotaSelection = nil
+    appliedDevice = nil
     persist:set(TASMOTA_PERSIST_KEY, nil)
     setTasmotaNotes("")
+    showZigbeeLightType(false)
     return
   end
   local choice = tasmotaChoices[propertyValue]
@@ -822,8 +839,25 @@ function OPC.Discovered_Device(propertyValue)
   -- refreshing (or the same output picked again) leaves a name given by hand.
   if previous == nil or previous.mac ~= choice.mac or previous.load ~= choice.load then
     renamePending = { mac = choice.mac, load = choice.load }
+    -- A chosen Zigbee light type belongs to the device it was chosen for.
+    if Properties["Zigbee Light Type"] ~= "Auto" then
+      UpdateProperty("Zigbee Light Type", "Auto")
+      Properties["Zigbee Light Type"] = "Auto"
+    end
   end
   requestTasmotaDevice(choice.mac)
+end
+
+function OPC.Zigbee_Light_Type(propertyValue)
+  log:trace("OPC.Zigbee_Light_Type('%s')", propertyValue)
+  if not gInitialized then
+    return
+  end
+  if appliedDevice ~= nil and appliedDevice.type == Zigbee.TYPE then
+    applyTasmotaDevice(appliedDevice)
+  elseif tasmotaSelection ~= nil then
+    requestTasmotaDevice(tasmotaSelection.mac)
+  end
 end
 
 --- The broker's list of discovered devices (Tasmota and Shelly).

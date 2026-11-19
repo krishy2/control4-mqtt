@@ -448,6 +448,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111905 - 2026-11-19
+
+### Added
+
+- MQTT Light: Zigbee Light Type (Auto, Switch, Dimmer, White (CT)), shown for a
+  Zigbee light. Auto uses what the broker detected; the others fill in the
+  fields for that kind of light whatever the gateway says. Device Notes say when
+  the gateway's `ZbLight` type differs.
+
 ## v2026111904 - 2026-11-19
 
 ### Fixed

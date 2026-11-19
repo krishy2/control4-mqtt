@@ -182,6 +182,18 @@
         <description>Settings on the discovered device that should change for this light to work well</description>
       </property>
       <property>
+        <name>Zigbee Light Type</name>
+        <type>LIST</type>
+        <items>
+          <item>Auto</item>
+          <item>Switch</item>
+          <item>Dimmer</item>
+          <item>White (CT)</item>
+        </items>
+        <default>Auto</default>
+        <description>For a Zigbee light: what it is. Auto uses what the broker detected from the gateway; the others fill in the fields for that kind of light whatever the gateway says.</description>
+      </property>
+      <property>
         <name>Payload Mode</name>
         <type>LIST</type>
         <default>Separate Topics</default>

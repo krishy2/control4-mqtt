@@ -268,9 +268,11 @@ function Zigbee.lightType(dev)
 end
 
 --- The device as a Control4 light: at most one output, "light".
+--- @param chosen integer|nil a light type chosen in the light driver, used
+---   instead of the detected one
 --- @return table[] loads { id, label, power, dimmer, ct, color }
-function Zigbee.loads(dev)
-  local t = Zigbee.lightType(dev)
+function Zigbee.loads(dev, chosen)
+  local t = Zigbee.LIGHT_TYPES[chosen or -1] and chosen or Zigbee.lightType(dev)
   if t == nil then
     return {}
   end
@@ -288,8 +290,8 @@ function Zigbee.loads(dev)
   }
 end
 
-function Zigbee.load(dev, loadId)
-  for _, l in ipairs(Zigbee.loads(dev)) do
+function Zigbee.load(dev, loadId, chosen)
+  for _, l in ipairs(Zigbee.loads(dev, chosen)) do
     if l.id == loadId then
       return l
     end
@@ -378,9 +380,23 @@ end
 --- Things on the gateway or the device that should change for the light to
 --- work well.
 --- @return string[]
-function Zigbee.notes(dev)
+function Zigbee.notes(dev, chosen)
   local notes = {}
   local t, configured = Zigbee.lightType(dev)
+  if Zigbee.LIGHT_TYPES[chosen or -1] then
+    local gatewayType = dev.light and dev.light.type or nil
+    if gatewayType ~= chosen then
+      notes[#notes + 1] = string.format(
+        "Zigbee Light Type is %s here; the gateway has %s. Run ZbLight %s,%d on the gateway so it reads the "
+          .. "right values back from the light.",
+        Zigbee.LIGHT_TYPES[chosen].label:lower(),
+        gatewayType ~= nil and string.format("type %d", gatewayType) or "no light type",
+        dev.named and dev.name or dev.short,
+        chosen
+      )
+    end
+    t, configured = chosen, nil
+  end
   if configured ~= nil then
     notes[#notes + 1] = string.format(
       "Tasmota has this light as type %d (%s) but it reports color temperature. Run ZbLight %s,%d on the gateway.",
@@ -395,10 +411,10 @@ function Zigbee.notes(dev)
       .. (Zigbee.LIGHT_TYPES[t].ct and " and color temperature" or "")
       .. " are."
   end
-  if t ~= nil and configured == nil and (dev.light == nil or dev.light.type == nil) then
+  if t ~= nil and chosen == nil and configured == nil and (dev.light == nil or dev.light.type == nil) then
     notes[#notes + 1] = string.format(
-      "Tasmota has no light type for this device, so it is offered as a %s. If it has color temperature, run "
-        .. "ZbLight %s,2 on the gateway (3 RGB, 4 RGBW, 5 RGB and white).",
+      "Tasmota has no light type for this device, so it is offered as a %s. If it has color temperature, set "
+        .. "Zigbee Light Type, and run ZbLight %s,2 on the gateway (3 RGB, 4 RGBW, 5 RGB and white).",
       Zigbee.LIGHT_TYPES[t].label:lower(),
       dev.named and dev.name or dev.short
     )
@@ -432,8 +448,8 @@ end
 
 --- MQTT Light properties for the device.
 --- @return table|nil props, string|nil error
-function Zigbee.lightProperties(dev, loadId)
-  local load = Zigbee.load(dev, loadId)
+function Zigbee.lightProperties(dev, loadId, chosen)
+  local load = Zigbee.load(dev, loadId, chosen)
   if load == nil then
     return nil, "not a light: " .. tostring(dev.name)
   end

@@ -124,6 +124,13 @@ T.eq("a saved switch is read again as a white light", Zigbee.loads(again)[1].lab
 T.eq("keeping where it reports", again.stateTopic, "tele/zigbee/1582/SENSOR")
 T.eq("a device saved without its answer stays as it was", Zigbee.rebuild({ name = "x" }).name, "x")
 
+T.eq("a chosen type wins", Zigbee.loads(unnamed, 2)[1].label, "White light")
+T.eq("chosen as a switch", Zigbee.lightProperties(unnamed, "light", 0)["Brightness Command Topic"], "")
+T.check(
+  "notes say the gateway differs from the choice",
+  table.concat(Zigbee.notes(unnamed, 2), " "):find("ZbLight 0x372D,2", 1, true) ~= nil
+)
+
 -------------------------------------------------------------------------------
 T.section("MQTT Light properties")
 -------------------------------------------------------------------------------
