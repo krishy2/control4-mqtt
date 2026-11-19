@@ -448,6 +448,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111906 - 2026-11-19
+
+### Fixed
+
+- MQTT Light: Composer Pro could still refuse the default brightness and color
+  rate ("Value of '0.750' is not valid", Minimum and Maximum 0), for example
+  when the light's capabilities changed. The fade time ranges and their 0.75 s
+  defaults are now sent on their own before the other capabilities, as well as
+  with them, and driver.xml declares the defaults. Lights added before
+  v2026102502 may still need to be removed and added again.
+
 ## v2026111905 - 2026-11-19
 
 ### Added

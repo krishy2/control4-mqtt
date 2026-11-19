@@ -399,6 +399,23 @@ end
 --- maximum must stay at 32767 (32.7 s); driver.xml declares the same.
 MqttLight.RATE_MIN = 0
 MqttLight.RATE_MAX = 32767
+--- The proxy's default fade time (ms), declared so Composer's rate controls
+--- always have a value inside their range.
+MqttLight.RATE_DEFAULT = 750
+
+--- Fade time ranges and defaults, sent on their own before any other
+--- capability so Composer's rate controls never see a 0-0 range.
+--- @return table
+function MqttLight.rateCapabilities()
+  return {
+    brightness_rate_min = tostring(MqttLight.RATE_MIN),
+    brightness_rate_max = tostring(MqttLight.RATE_MAX),
+    brightness_rate_default = tostring(MqttLight.RATE_DEFAULT),
+    color_rate_min = tostring(MqttLight.RATE_MIN),
+    color_rate_max = tostring(MqttLight.RATE_MAX),
+    color_rate_default = tostring(MqttLight.RATE_DEFAULT),
+  }
+end
 
 --- light_v2 DYNAMIC_CAPABILITIES_CHANGED parameters for the current config.
 --- Color and CCT are always sent together, as the proxy docs require.
@@ -413,13 +430,12 @@ function MqttLight:dynamicCapabilities()
     supports_color = boolStr(c.color),
     supports_color_correlated_temperature = boolStr(c.cct),
     color_rate_behavior = c.transition and "1" or "0",
-    -- Always sent: Composer reads missing ranges as 0-0 and then refuses the
-    -- proxy's default fade time (0.75 s), even on a light without color.
-    brightness_rate_min = tostring(MqttLight.RATE_MIN),
-    brightness_rate_max = tostring(MqttLight.RATE_MAX),
-    color_rate_min = tostring(MqttLight.RATE_MIN),
-    color_rate_max = tostring(MqttLight.RATE_MAX),
   }
+  -- Always sent: Composer reads missing ranges as 0-0 and then refuses the
+  -- proxy's default fade time (0.75 s), even on a light without color.
+  for k, v in pairs(MqttLight.rateCapabilities()) do
+    params[k] = v
+  end
   if c.cct then
     params.color_correlated_temperature_min = tostring(c.cctMin)
     params.color_correlated_temperature_max = tostring(c.cctMax)
@@ -551,6 +567,7 @@ end
 
 --- Resend everything the proxy needs after startup or reconnection.
 function MqttLight:refreshProxy()
+  self:_notify("DYNAMIC_CAPABILITIES_CHANGED", MqttLight.rateCapabilities())
   self:_notify("DYNAMIC_CAPABILITIES_CHANGED", self:dynamicCapabilities())
   self:_notify("CLICK_RATE_UP", { RATE = self.settings.clickRateUp })
   self:_notify("CLICK_RATE_DOWN", { RATE = self.settings.clickRateDown })

@@ -492,6 +492,19 @@ T.eq("the light is not renamed at start-up", #ShimRenames(), 0)
 T.eq("no driver code leaks into globals", { rawget(_G, "tasmotaSelection"), rawget(_G, "tasmotaChoices") }, {})
 local capsMsg = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
 T.check("capabilities are sent at startup", capsMsg ~= nil)
+local capsMsgs = notifies("DYNAMIC_CAPABILITIES_CHANGED")
+T.eq("fade ranges and defaults go first, on their own", capsMsgs[1], {
+  brightness_rate_min = "0",
+  brightness_rate_max = "32767",
+  brightness_rate_default = "750",
+  color_rate_min = "0",
+  color_rate_max = "32767",
+  color_rate_default = "750",
+})
+T.eq("and again with the capabilities", { capsMsg.color_rate_default, capsMsg.brightness_rate_max }, { "750", "32767" })
+for _, cap in ipairs({ "brightness_rate_default", "color_rate_default" }) do
+  T.eq("driver.xml declares " .. cap, xml:match("<" .. cap .. ">(%d+)</" .. cap .. ">"), "750")
+end
 T.eq("a light with no topics starts as a switch", capsMsg and capsMsg.dimmer, "false")
 
 reset()
