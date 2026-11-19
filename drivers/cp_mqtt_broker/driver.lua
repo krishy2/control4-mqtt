@@ -626,6 +626,18 @@ local function onZigbeeReceived(gw, topic, entries)
   end
 end
 
+--- A ZbLight answer: the light type of a device changed (or was shown).
+local function onZigbeeLight(gw, lights)
+  for ieee, z in pairs(zigbeeDevices) do
+    local lt = z.gateway and z.gateway.mac == gw.mac and lights[z.short] or nil
+    if lt ~= nil and lt >= 0 and (z.light == nil or z.light.type ~= lt) then
+      z.light = { endpoint = (z.clusters or {}).L or 1, type = lt }
+      log:info("Zigbee device %s is now light type %d", z.name, lt)
+      zigbeeChanged(ieee)
+    end
+  end
+end
+
 --- Handle a message if it belongs to a Zigbee gateway.
 --- @return boolean handled true for this driver's own topics
 local function handleZigbee(topic, payload)
@@ -652,6 +664,10 @@ local function handleZigbee(topic, payload)
             local entries = Zigbee.parseReceived(payload)
             if entries ~= nil then
               onZigbeeReceived(gw, topic, entries)
+            end
+            local lights = Zigbee.parseLight(payload)
+            if lights ~= nil then
+              onZigbeeLight(gw, lights)
             end
             return true
           end
@@ -973,7 +989,7 @@ function OnDriverInit()
   end
   persist:setWriteBehind(SHELLY_PERSIST_KEY, 10 * ONE_SECOND)
   shellyDevices = persist:get(SHELLY_PERSIST_KEY, {}) or {}
-  persist:setWriteBehind(ZIGBEE_PERSIST_KEY, 10 * ONE_SECOND)
+  persist:setWriteBehind(ZIGBEE_PERSIST_KEY, 2 * ONE_SECOND)
   zigbeeDevices = persist:get(ZIGBEE_PERSIST_KEY, {}) or {}
 end
 

@@ -6,13 +6,13 @@
 ---
 ---   {"ZbStatus3":[{"Device":"0xE53A","Name":"spot1","IEEEAddr":"0xA4C1...",
 ---     "ModelId":"TS0502B","Manufacturer":"_TZ3210_a046u4au","Endpoints":[1,242],
----     "Config":["~01.1","O01","L01"],"ColorMode":2,...}]}
+---     "Config":["~01.1","O01","L01.2"],"ColorMode":0,...}]}
 ---
 --- A device is a light only with an On/Off cluster. Config lists what Tasmota
---- knows of the device: "~01.N" a light on endpoint 1
---- of type N (0 on/off, 1 dimmer, 2 white with color temperature, 3 RGB,
---- 4 RGBW, 5 RGB with color temperature), "O01" On/Off and "L01" Level (brightness)
---- on endpoint 1, "T01" temperature and so on.
+--- knows of the device: "O01" On/Off and "L01" Level (brightness) on endpoint 1,
+--- "L01.N" the same with the light type set by ZbLight (0 on/off, 1 dimmer,
+--- 2 white with color temperature, 3 RGB, 4 RGBW, 5 RGB with color
+--- temperature), "T01" temperature and so on. "~01.1" is not a light type.
 ---
 --- Devices report on tele/<gateway>/SENSOR wrapped in ZbReceived, or with
 --- SetOption89 1 on tele/<gateway>/<short address>/SENSOR (the friendly name in
@@ -149,19 +149,22 @@ function Zigbee.parseResult(payload)
   return nil
 end
 
---- Read the Config list of a ZbStatus3 answer.
+--- Read the Config list of a ZbStatus3 answer. Each entry is a letter, the
+--- endpoint in hex and an optional ".N": "O01" On/Off on endpoint 1, "L01.2"
+--- Level on endpoint 1 with light type 2 (set by ZbLight; "L01" has none).
+--- "~01.1" entries (seen on Tuya devices, sensors included) are not light types.
 --- @return table { light = {endpoint, type}|nil, clusters = { O = endpoint, L = endpoint, ... } }
 local function parseConfig(config)
   local out = { clusters = {} }
   for _, c in ipairs(type(config) == "table" and config or {}) do
     if type(c) == "string" then
-      local ep, lt = c:match("^~(%x%x)%.(%d+)$")
-      if ep ~= nil then
-        out.light = { endpoint = tonumber(ep, 16), type = tonumber(lt) }
-      else
-        local letter, cep = c:match("^(%a)(%x%x)$")
-        if letter ~= nil and out.clusters[letter] == nil then
-          out.clusters[letter] = tonumber(cep, 16)
+      local letter, ep, sub = c:match("^(%a)(%x%x)%.?(%d*)$")
+      if letter ~= nil then
+        if out.clusters[letter] == nil then
+          out.clusters[letter] = tonumber(ep, 16)
+        end
+        if letter == "L" and sub ~= "" and out.light == nil then
+          out.light = { endpoint = tonumber(ep, 16), type = tonumber(sub) }
         end
       end
     end
@@ -219,8 +222,7 @@ end
 function Zigbee.lightType(dev)
   local c = dev.clusters or {}
   if c.O == nil then
-    -- No On/Off cluster: not a light, whatever light type Tasmota was given
-    -- (a soil sensor can carry a "~01.1" from an earlier ZbLight).
+    -- No On/Off cluster: not a light (soil sensors carry Tuya "~01.1" entries).
     return nil, nil
   end
   local configured = dev.light and dev.light.type or nil
@@ -318,6 +320,25 @@ function Zigbee.styleFrom(gw, topic, key, dev)
   return style
 end
 
+--- Light types in a ZbLight answer, which Tasmota publishes on the device's
+--- sensor topic: {"ZbLight":{"0x351F":{"Device":"0x351F","Light":2,...}}}.
+--- @return table|nil { short address -> light type }
+function Zigbee.parseLight(payload)
+  local t = decode(payload)
+  if t == nil or type(t.ZbLight) ~= "table" then
+    return nil
+  end
+  local out = {}
+  for _, entry in pairs(t.ZbLight) do
+    local short = type(entry) == "table" and Zigbee.shortAddress(entry.Device) or nil
+    local lt = type(entry) == "table" and tonumber(entry.Light) or nil
+    if short ~= nil and lt ~= nil then
+      out[short] = math.floor(lt)
+    end
+  end
+  return out
+end
+
 --- The entries of a ZbReceived message.
 --- @return table|nil { key -> entry }
 function Zigbee.parseReceived(payload)
@@ -347,6 +368,14 @@ function Zigbee.notes(dev)
     notes[#notes + 1] = "Color is not controlled through the Zigbee gateway yet: on/off, brightness"
       .. (Zigbee.LIGHT_TYPES[t].ct and " and color temperature" or "")
       .. " are."
+  end
+  if t ~= nil and configured == nil and (dev.light == nil or dev.light.type == nil) then
+    notes[#notes + 1] = string.format(
+      "Tasmota has no light type for this device, so it is offered as a %s. If it has color temperature, run "
+        .. "ZbLight %s,2 on the gateway (3 RGB, 4 RGBW, 5 RGB and white).",
+      Zigbee.LIGHT_TYPES[t].label:lower(),
+      dev.named and dev.name or dev.short
+    )
   end
   if not dev.named then
     notes[#notes + 1] = string.format("The device has no name; give it one with ZbName %s,<name>.", dev.short)

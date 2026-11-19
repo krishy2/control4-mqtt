@@ -176,20 +176,21 @@ the MQTT Light's Discovered Device list as, for example,
 How it works: the driver sends `ZbStatus1` to every Tasmota it finds; a Zigbee
 gateway answers with its paired devices, and each is then read with
 `ZbStatus3 <device>`. A device is a light when it has the On/Off cluster (`O01`
-in its `Config`); its type is the light type Tasmota lists (`~01.N`, set with
-`ZbLight`), or a dimmer when it also has the Level cluster (`L01`). Sensors are
-never lights, even with a light type left over from an earlier `ZbLight`. The
-list is read again when the gateway connects, every 15 minutes, and when a
-device the driver does not know reports.
+in its `Config`). Its type is the light type set with `ZbLight`, which Tasmota
+shows on the Level entry (`L01.2` is type 2); without one, a light that reports
+color temperature mode is a white light, one with the Level cluster (`L01`) a
+dimmer and one without a switch. A `ZbLight` run on the gateway is picked up at
+once. The list is read again when the gateway connects, every 15 minutes, and
+when a device the driver does not know reports.
 
 Recommended on the gateway:
 
 - Name every device: `ZbName 0x372D,Kitchen_spot`. The name is used for the
   light in Control4. Unnamed devices are listed by model and address.
 - Set the right light type: `ZbLight <device>,<type>` with 0 on/off, 1 dimmer, 2
-  white with color temperature, 3 RGB, 4 RGBW, 5 RGB with color temperature. A
-  light set as a dimmer that reports color temperature mode is offered as a
-  white light, and its Device Notes say which `ZbLight` to run.
+  white with color temperature, 3 RGB, 4 RGBW, 5 RGB with color temperature.
+  Many bulbs have no type until this is run and are then offered as dimmers
+  only; their Device Notes say which `ZbLight` to run.
 - `SetOption89 1` (a topic per device: `tele/zigbee/E53A/SENSOR`). Without it
   every device reports on `tele/zigbee/SENSOR`; both work, and so do
   `SetOption83` and `SetOption112`, which the driver learns from the messages.
@@ -446,6 +447,19 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026111903 - 2026-11-19
+
+### Fixed
+
+- Zigbee discovery read the light type from the wrong `Config` entry. Tasmota
+  shows the type set with `ZbLight` on the Level entry (`L01.2`); the `~01.1`
+  entry it was read from is something else. Lights set with `ZbLight <light>,2`
+  showed as dimmers, and one as a switch. A `ZbLight` answer on the gateway now
+  updates the light at once, and Device Notes suggest `ZbLight` for lights
+  without a type.
+- The broker saves what it learns about Zigbee devices within 2 seconds rather
+  than 10, so less is lost when it restarts.
 
 ## v2026111902 - 2026-11-19
 

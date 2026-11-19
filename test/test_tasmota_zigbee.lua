@@ -59,14 +59,40 @@ T.section("What each device is")
 local spot1 = Zigbee.build(gw, Zigbee.parseResult(SPOT1).devices[1])
 T.eq("keyed by IEEE address", { spot1.mac, spot1.short, spot1.name }, { "0xA4C13837E8E485BF", "0xE53A", "spot1" })
 local t, configured = Zigbee.lightType(spot1)
-T.eq("type 1 in Tasmota, color temperature mode: a white light", { t, configured }, { 2, 1 })
+T.eq("no light type in Tasmota, color temperature mode: a white light", { t, configured }, { 2, nil })
 local loads = Zigbee.loads(spot1)
 T.eq("one light output", { #loads, loads[1].label, loads[1].dimmer, loads[1].ct }, { 1, "White light", true, true })
 local notes = table.concat(Zigbee.notes(spot1), " ")
 T.check("notes suggest ZbLight", notes:find("ZbLight spot1,2", 1, true) ~= nil, notes)
 
+-- After ZbLight spot1,2 the type sits on the Level entry ("L01.2"), and
+-- ColorMode may be 0 although the bulb does color temperature.
+local SPOT1_TYPED = '{"ZbStatus3":[{"Device":"0xE53A","Name":"spot1","IEEEAddr":"0xA4C13837E8E485BF",'
+  .. '"ModelId":"TS0502B","Manufacturer":"_TZ3210_a046u4au","Endpoints":[1,242],"Config":["~01.1","O01","L01.2"],'
+  .. '"Power":0,"Dimmer":254,"Hue":0,"X":0,"CT":354,"ColorMode":0,"Reachable":true,"LinkQuality":98}]}'
+local typed = Zigbee.build(gw, Zigbee.parseResult(SPOT1_TYPED).devices[1])
+T.eq("L01.2 is light type 2", { Zigbee.lightType(typed) }, { 2 })
+T.eq("so a white light", Zigbee.loads(typed)[1].label, "White light")
+T.check("and no ZbLight note", not table.concat(Zigbee.notes(typed), " "):find("ZbLight", 1, true))
+local SPOT3 = '{"ZbStatus3":[{"Device":"0x1582","Name":"spot3","IEEEAddr":"0xA4C138ECF4CCF3ED","ModelId":"TS0502B",'
+  .. '"Manufacturer":"_TZ3210_a046u4au","Endpoints":[1,242],"Config":["O01","L01.2"],"Power":0,"Hue":0,"X":0,'
+  .. '"CT":0,"Reachable":true,"LastSeen":45,"LinkQuality":156}]}'
+T.eq(
+  "without the ~ entry too",
+  Zigbee.loads(Zigbee.build(gw, Zigbee.parseResult(SPOT3).devices[1]))[1].label,
+  "White light"
+)
+T.eq(
+  "a ZbLight answer gives the type",
+  Zigbee.parseLight(
+    '{"ZbLight":{"0x351F":{"Device":"0x351F","Name":"spot2","Reachable":true,"Power":0,"Dimmer":48,"Hue":0,'
+      .. '"X":0,"CT":327,"ColorMode":0,"Light":2}}}'
+  ),
+  { ["0x351F"] = 2 }
+)
+
 local unnamed = Zigbee.build(gw, Zigbee.parseResult(UNNAMED).devices[1])
-T.eq("no ColorMode: the type Tasmota has", Zigbee.lightType(unnamed), 1)
+T.eq("no light type and no ColorMode: a dimmer", Zigbee.lightType(unnamed), 1)
 T.eq("an unnamed light is named after model and address", Zigbee.loadName(unnamed, "light"), "TS0502B 0x372D")
 T.check("and asked to be named", table.concat(Zigbee.notes(unnamed), " "):find("ZbName 0x372D", 1, true) ~= nil)
 
@@ -87,6 +113,7 @@ local soil = Zigbee.build(gw, {
 })
 T.eq("a soil sensor Tasmota calls a light (~01.1, no On/Off) is not one", #Zigbee.loads(soil), 0)
 T.eq("a light type alone is not enough", Zigbee.lightType({ light = { type = 2 }, clusters = {} }), nil)
+T.eq("a light type on Level counts", Zigbee.lightType({ light = { type = 5 }, clusters = { O = 1, L = 1 } }), 5)
 
 -------------------------------------------------------------------------------
 T.section("MQTT Light properties")
@@ -274,6 +301,12 @@ T.eq("the device in full, with where it reports", { dev.name, dev.stateTopic, de
   "tele/zigbee/E53A/SENSOR",
   "0xE53A",
 })
+
+message(
+  "tele/zigbee/372D/SENSOR",
+  '{"ZbLight":{"0x372D":{"Device":"0x372D","Reachable":true,"Power":1,"Dimmer":254,"CT":0,"ColorMode":0,"Light":2}}}'
+)
+T.eq("ZbLight on the gateway updates the list", listFor(LIGHT_ID), { "0x372D=White light", "spot1=White light" })
 
 -- A device that was unpaired disappears with the next list.
 message("stat/zigbee/RESULT", '{"ZbStatus1":[{"Device":"0xE53A","Name":"spot1"}]}')

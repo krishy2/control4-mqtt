@@ -18,6 +18,19 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111903 - 2026-11-19
+
+### Fixed
+
+- Zigbee discovery read the light type from the wrong `Config` entry. Tasmota
+  shows the type set with `ZbLight` on the Level entry (`L01.2`); the `~01.1`
+  entry it was read from is something else. Lights set with `ZbLight <light>,2`
+  showed as dimmers, and one as a switch. A `ZbLight` answer on the gateway now
+  updates the light at once, and Device Notes suggest `ZbLight` for lights
+  without a type.
+- The broker saves what it learns about Zigbee devices within 2 seconds rather
+  than 10, so less is lost when it restarts.
+
 ## v2026111902 - 2026-11-19
 
 ### Fixed
