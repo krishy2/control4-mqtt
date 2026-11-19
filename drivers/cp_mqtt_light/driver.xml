@@ -362,7 +362,7 @@
         <name>Brightness Command Payload</name>
         <type>STRING</type>
         <default/>
-        <description>Optional payload template for brightness commands: {value} is replaced by the brightness value. Empty sends the value itself. E.g. {"Device":"spot1","Send":{"Dimmer":{value}}} for Tasmota Zigbee ZbSend.</description>
+        <description>Optional payload template for brightness commands: {value} is replaced by the brightness value. Empty sends the value itself. Also {hex8}, {hex16} (hex, low byte first) and {time16} (fade time in tenths of a second, hex): a template with {time16} makes the light fade by itself. E.g. {"Device":"spot1","Send":{"Dimmer":{value}}} for Tasmota Zigbee ZbSend.</description>
       </property>
       <property>
         <name>Brightness Key</name>
@@ -406,7 +406,7 @@
         <name>Color Temp Command Payload</name>
         <type>STRING</type>
         <default/>
-        <description>Optional payload template for color temperature commands: {value} is replaced by the color temperature value. Empty sends the value itself. E.g. {"Device":"spot1","Send":{"CT":{value}}} for Tasmota Zigbee ZbSend.</description>
+        <description>Optional payload template for color temperature commands: {value} is replaced by the color temperature value. Empty sends the value itself. Also {hex8}, {hex16} (hex, low byte first) and {time16} (fade time in tenths of a second, hex): a template with {time16} makes the light fade by itself. E.g. {"Device":"spot1","Send":{"CT":{value}}} for Tasmota Zigbee ZbSend.</description>
       </property>
       <property>
         <name>Color Temp Key</name>

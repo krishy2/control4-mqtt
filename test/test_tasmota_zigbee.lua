@@ -141,7 +141,22 @@ T.eq("commands go to ZbSend", props["Brightness Command Topic"], "cmnd/zigbee/Zb
 T.eq(
   "the device is named by IEEE address",
   props["Brightness Command Payload"],
-  '{"Device":"0xA4C13837E8E485BF","Send":{"Dimmer":{value}}}'
+  '{"Device":"0xA4C13837E8E485BF","Send":"0008!04/{hex8}{time16}"}'
+)
+T.eq(
+  "color temperature with the fade time too",
+  props["Color Temp Command Payload"],
+  '{"Device":"0xA4C13837E8E485BF","Send":"0300!0A/{hex16}{time16}"}'
+)
+T.eq("a dimmer is switched by its level: Power only reports", {
+  props["Power Command Topic"],
+  props["Power State Topic"],
+}, { "", "tele/zigbee/E53A/SENSOR" })
+local switchProps = Zigbee.lightProperties(unnamed, "light", 0)
+T.eq(
+  "a switch uses Power",
+  switchProps["Power Command Payload"],
+  '{"Device":"0xA4C138D18EDA3FF5","Send":{"Power":{value}}}'
 )
 T.eq("color temperature", { props["Color Temp Value Path"], props["Color Temp Unit"] }, {
   "$.ZbReceived['0xE53A'].CT",

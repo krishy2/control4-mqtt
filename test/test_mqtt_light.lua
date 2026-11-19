@@ -1212,7 +1212,7 @@ T.eq("Zigbee settings", {
   "Separate Topics",
   "tele/zigbee/E53A/SENSOR",
   "cmnd/zigbee/ZbSend",
-  '{"Device":"0xA4C13837E8E485BF","Send":{"CT":{value}}}',
+  '{"Device":"0xA4C13837E8E485BF","Send":"0300!0A/{hex16}{time16}"}',
   "",
 })
 local zbCaps = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
@@ -1230,7 +1230,7 @@ end)
 T.contains(
   "Control4 commands go through ZbSend",
   table.concat(published("cmnd/zigbee/ZbSend"), " "),
-  '{"Device":"0xA4C13837E8E485BF","Send":{"Dimmer":254}}'
+  '{"Device":"0xA4C13837E8E485BF","Send":"0008!04/FE0000"}'
 )
 
 -- Zigbee Light Type: what the light is, whatever the gateway says.
@@ -1262,7 +1262,7 @@ T.eq("White (CT) fills in color temperature", {
   Properties["Color Temp Value Path"],
 }, {
   "cmnd/zigbee/ZbSend",
-  '{"Device":"0xA4C138ECF4CCF3ED","Send":{"CT":{value}}}',
+  '{"Device":"0xA4C138ECF4CCF3ED","Send":"0300!0A/{hex16}{time16}"}',
   "$.ZbReceived['0x1582'].CT",
 })
 local ctCaps = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
@@ -1353,6 +1353,77 @@ reset()
 zb:handleProxyCommand("OFF", {})
 ShimFireTimers()
 T.eq("off goes in the power template", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot1","Send":{"Power":0}}' })
+
+T.eq("a level byte and fade time", MqttLight.commandPayload("0008!04/{hex8}{time16}", 51, 750), "0008!04/330800")
+T.eq("two bytes, low byte first", MqttLight.commandPayload("0300!0A/{hex16}{time16}", 454, 3000), "0300!0A/C6011E00")
+T.eq("no fade: time 0", MqttLight.commandPayload("0008!04/{hex8}{time16}", 254), "0008!04/FE0000")
+
+-- A Zigbee dimmer whose commands carry the fade time: the light fades itself.
+local zbRaw = '{"Device":"spot1","Send":"0008!04/{hex8}{time16}"}'
+local zbCt = '{"Device":"spot1","Send":"0300!0A/{hex16}{time16}"}'
+reset()
+clock = 0
+light = newLight({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "Auto",
+  stateOn = "1",
+  stateOff = "0",
+  payloadOn = "1",
+  payloadOff = "0",
+  brightnessMax = 254,
+  colorTempUnit = "Mireds",
+  colorTempMin = 2000,
+  colorTempMax = 6500,
+  fadeMode = MqttLight.FADE_JUMP,
+  topics = {
+    power = { stateTopic = "tele/zigbee/E53A/SENSOR", valuePath = "$.ZbReceived['0xE53A'].Power" },
+    brightness = {
+      stateTopic = "tele/zigbee/E53A/SENSOR",
+      valuePath = "$.ZbReceived['0xE53A'].Dimmer",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = zbRaw,
+    },
+    colorTemp = {
+      stateTopic = "tele/zigbee/E53A/SENSOR",
+      valuePath = "$.ZbReceived['0xE53A'].CT",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = zbCt,
+    },
+  },
+})
+T.eq("fade time in the commands: the light fades itself", light.caps.transition, true)
+light:onMessage("tele/zigbee/E53A/SENSOR", '{"ZbReceived":{"0xE53A":{"Power":1,"Dimmer":254,"CT":250}}}')
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "20", RATE = "750" })
+ShimFireTimers()
+T.eq("one command with level and fade time", published("cmnd/zigbee/ZbSend"), {
+  '{"Device":"spot1","Send":"0008!04/330800"}',
+})
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "3000" })
+ShimFireTimers()
+T.eq("fading off is level 0 with the fade time", published("cmnd/zigbee/ZbSend"), {
+  '{"Device":"spot1","Send":"0008!04/001E00"}',
+})
+light:onMessage("tele/zigbee/E53A/SENSOR", '{"ZbReceived":{"0xE53A":{"Power":0}}}')
+ShimFireTimers()
+reset()
+local wx, wy = Color.cctToXy(2200)
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(wx),
+  LIGHT_COLOR_TARGET_Y = tostring(wy),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "1000" })
+ShimFireTimers()
+local zbSent = published("cmnd/zigbee/ZbSend")
+T.eq("turning on with a color: two commands, both with the fade time", #zbSent, 2)
+local mireds, fade = zbSent[1]:match("0300!0A/(%x%x%x%x)(%x%x%x%x)")
+local m = mireds and (tonumber(mireds:sub(1, 2), 16) + 256 * tonumber(mireds:sub(3, 4), 16)) or 0
+T.check("color temperature about 2200 K (455 mireds)", math.abs(m - 455) <= 5, zbSent[1])
+T.eq("with the same fade time", fade, "0A00")
+T.eq("brightness fades and turns on", zbSent[2], '{"Device":"spot1","Send":"0008!04/7F0A00"}')
 
 T.eq("no template sends the value itself", MqttLight.commandPayload("", 50), "50")
 T.eq("nil template sends the value itself", MqttLight.commandPayload(nil, "ON"), "ON")

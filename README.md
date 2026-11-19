@@ -448,6 +448,20 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111908 - 2026-11-19
+
+### Added
+
+- MQTT Light: Command Payload placeholders `{hex8}`, `{hex16}` and `{time16}`
+  (fade time in tenths of a second); a template with `{time16}` makes the light
+  fade by itself with Control4's fade time.
+- Zigbee lights behind a Tasmota gateway fade by themselves: picking one fills
+  in the standard Zigbee commands with the fade time, `0008!04` (Move to Level
+  with On/Off, which also fades on and off) and `0300!0A` (Move to Color
+  Temperature), so brightness and color temperature change smoothly in one
+  command each instead of in steps. Pick the light again (or set the templates)
+  to use it on lights already set up.
+
 ## v2026111907 - 2026-11-19
 
 ### Fixed

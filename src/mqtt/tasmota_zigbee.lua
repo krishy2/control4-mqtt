@@ -456,14 +456,21 @@ function Zigbee.lightProperties(dev, loadId, chosen)
   local gw = dev.gateway or {}
   local stateTopic, key = Zigbee.state(dev)
   local send = Tasmota.topicFor(gw, 1, "ZbSend")
-  local function feature(prefix, enabled, attribute)
+  --- @param raw string|nil a raw ZCL command ("0008!04/{hex8}{time16}") in
+  ---   place of Tasmota's named one; false: state only, no command
+  local function feature(prefix, enabled, attribute, raw)
     local p = {}
+    local command = enabled and raw ~= false
     p[prefix .. " State Topic"] = enabled and stateTopic or ""
     p[prefix .. " Value Path"] = enabled and string.format("$.ZbReceived['%s'].%s", key, attribute) or ""
-    p[prefix .. " Command Topic"] = enabled and send or ""
-    p[prefix .. " Command Payload"] = enabled
-        and string.format('{"Device":"%s","Send":{"%s":{value}}}', dev.ieee, attribute)
-      or ""
+    p[prefix .. " Command Topic"] = command and send or ""
+    if not command then
+      p[prefix .. " Command Payload"] = ""
+    elseif raw ~= nil then
+      p[prefix .. " Command Payload"] = string.format('{"Device":"%s","Send":"%s"}', dev.ieee, raw)
+    else
+      p[prefix .. " Command Payload"] = string.format('{"Device":"%s","Send":{"%s":{value}}}', dev.ieee, attribute)
+    end
     return p
   end
   local props = {
@@ -480,17 +487,26 @@ function Zigbee.lightProperties(dev, loadId, chosen)
     ["Payload On"] = "1",
     ["Payload Off"] = "0",
     ["Brightness Scale Max"] = "254",
-    -- Zigbee bulbs soften each change themselves; steps make them stutter.
+    -- Fades are done by the light: the raw Level and Color commands carry
+    -- Control4's fade time. Fade: Jump to Target also holds back reports that
+    -- the gateway read before the light got there.
     ["Fade"] = "Jump to Target",
+    ["Transition Command Topic"] = "",
   }
   local function merge(t)
     for k, v in pairs(t) do
       props[k] = v
     end
   end
-  merge(feature("Power", true, "Power"))
-  merge(feature("Brightness", load.dimmer, "Dimmer"))
-  merge(feature("Color Temp", load.ct, "CT"))
+  -- A dimmer is switched with Move to Level with On/Off (level 0 is off), so
+  -- turning on and off fades too; Power only reports. A switch uses Power.
+  local powerCommand = nil -- Tasmota's Power command
+  if load.dimmer then
+    powerCommand = false -- report only
+  end
+  merge(feature("Power", true, "Power", powerCommand))
+  merge(feature("Brightness", load.dimmer, "Dimmer", "0008!04/{hex8}{time16}"))
+  merge(feature("Color Temp", load.ct, "CT", "0300!0A/{hex16}{time16}"))
   merge(feature("Color", false, ""))
   merge(feature("White", false, ""))
   if load.ct then

@@ -298,7 +298,15 @@ function MqttLight:_has(feature)
   end
   local t = (cfg.topics or {})[feature] or {}
   if feature == "transition" then
-    return notEmpty(t.commandTopic), notEmpty(t.commandTopic)
+    -- A fade topic, or command templates that carry the fade time themselves
+    local inCommands = false
+    for _, f in pairs(cfg.topics or {}) do
+      if notEmpty(f.commandTopic) and MqttLight.templateHasTime(f.commandTemplate) then
+        inCommands = true
+      end
+    end
+    local has = notEmpty(t.commandTopic) or inCommands
+    return has, has
   end
   return notEmpty(t.stateTopic) or notEmpty(t.commandTopic), notEmpty(t.commandTopic)
 end
@@ -507,18 +515,40 @@ function MqttLight:_notify(command, params)
   SendToProxy(self.proxyBinding, command, params or {}, "NOTIFY")
 end
 
---- A command payload: the template with {value} replaced, or the value itself
---- when there is no template (e.g. Tasmota Zigbee ZbSend
---- {"Device":"spot1","Send":{"Dimmer":{value}}}).
+--- A command payload: the template with its placeholders filled in, or the
+--- value itself when there is no template.
+---   {value}   the value                      {"Device":"spot1","Send":{"Dimmer":{value}}}
+---   {hex8}    the value as one hex byte      "0008!04/{hex8}{time16}" (Zigbee level)
+---   {hex16}   the value as two hex bytes, low byte first ("0300!0A/{hex16}{time16}")
+---   {time16}  the fade time in tenths of a second, two hex bytes, low byte first
+--- A template with {time16} makes the device do fades itself.
 --- @param template string|nil
 --- @param value any
+--- @param rateMs number|nil fade time
 --- @return string
-function MqttLight.commandPayload(template, value)
+function MqttLight.commandPayload(template, value, rateMs)
   template = trim(template or "")
   if template == "" then
     return tostring(value)
   end
-  return (template:gsub("{value}", (tostring(value):gsub("%%", "%%%%"))))
+  local n = math.max(0, round(tonumber(value) or 0))
+  local tenths = Color.clamp(round((tonumber(rateMs) or 0) / 100), 0, 65534)
+  local function le16(v)
+    v = Color.clamp(v, 0, 65535)
+    return string.format("%02X%02X", v % 256, math.floor(v / 256))
+  end
+  local out = template
+    :gsub("{hex8}", string.format("%02X", Color.clamp(n, 0, 255)))
+    :gsub("{hex16}", le16(n))
+    :gsub("{time16}", le16(tenths))
+  return (out:gsub("{value}", (tostring(value):gsub("%%", "%%%%"))))
+end
+
+--- Whether a command template carries the fade time ({time16}).
+--- @param template string|nil
+--- @return boolean
+function MqttLight.templateHasTime(template)
+  return type(template) == "string" and template:find("{time16}", 1, true) ~= nil
 end
 
 function MqttLight:_publish(topic, payload)
@@ -1286,10 +1316,10 @@ function MqttLight:_send(cmd)
     return trim((topics[name] or {}).commandTopic or "")
   end
   local function send(name, value)
-    self:_publish(cmdTopic(name), MqttLight.commandPayload((topics[name] or {}).commandTemplate, value))
+    self:_publish(cmdTopic(name), MqttLight.commandPayload((topics[name] or {}).commandTemplate, value, cmd.rate))
   end
 
-  if c.transition and cmd.rate ~= nil then
+  if c.transition and cmd.rate ~= nil and cmdTopic("transition") ~= "" then
     send("transition", self:_transitionValue(cmd.rate))
   end
 

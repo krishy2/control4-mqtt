@@ -301,10 +301,19 @@ Values sent to turn the light on and off. Defaults `ON` / `OFF`.
 ##### Command Payload (Power, Brightness, Color Temp, Color, White)
 
 Optional payload template for that ability's commands, shown once its command
-topic is set: `{value}` is replaced by the value (Payload On or Payload Off for
-power). Empty sends the value itself. Use it when the value has to sit inside a
-bigger message, as with Tasmota's Zigbee `ZbSend`; see
+topic is set. Empty sends the value itself. Use it when the value has to sit
+inside a bigger message, as with Tasmota's Zigbee `ZbSend`; see
 [Example: Tasmota Zigbee bridge](#example-tasmota-zigbee-bridge).
+
+| Placeholder | Replaced by                                                        |
+| ----------- | ------------------------------------------------------------------ |
+| `{value}`   | the value (Payload On or Payload Off for power)                    |
+| `{hex8}`    | the value as one hex byte (`51` → `33`)                            |
+| `{hex16}`   | the value as two hex bytes, low byte first (`454` → `C601`)        |
+| `{time16}`  | the fade time in tenths of a second, two hex bytes, low byte first |
+
+A template with `{time16}` makes the light fade by itself, like a transition
+topic: each command carries Control4's fade time.
 
 #### Dimmer
 
@@ -537,26 +546,34 @@ bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and
 `SetOption89 1` so each device reports on its own topic. Every command goes to
 `ZbSend` with the device named in the message.
 
-| Property                   | Value                                          |
-| -------------------------- | ---------------------------------------------- |
-| Payload Mode               | Separate Topics                                |
-| Power State Topic          | `tele/zigbee/E53A/SENSOR`                      |
-| Power Value Path           | `$.ZbReceived['0xE53A'].Power`                 |
-| Power Command Topic        | `cmnd/zigbee/ZbSend`                           |
-| Power Command Payload      | `{"Device":"spot1","Send":{"Power":{value}}}`  |
-| State On / State Off       | `1` / `0`                                      |
-| Payload On / Payload Off   | `1` / `0`                                      |
-| Brightness State Topic     | `tele/zigbee/E53A/SENSOR`                      |
-| Brightness Value Path      | `$.ZbReceived['0xE53A'].Dimmer`                |
-| Brightness Command Topic   | `cmnd/zigbee/ZbSend`                           |
-| Brightness Command Payload | `{"Device":"spot1","Send":{"Dimmer":{value}}}` |
-| Brightness Scale Max       | `254`                                          |
-| Color Temp State Topic     | `tele/zigbee/E53A/SENSOR`                      |
-| Color Temp Value Path      | `$.ZbReceived['0xE53A'].CT`                    |
-| Color Temp Command Topic   | `cmnd/zigbee/ZbSend`                           |
-| Color Temp Command Payload | `{"Device":"spot1","Send":{"CT":{value}}}`     |
-| Color Temp Unit            | Mireds                                         |
-| Color Temp Min / Max       | the bulb's range in Kelvin, e.g. 2200 / 4000   |
+| Property                   | Value                                                 |
+| -------------------------- | ----------------------------------------------------- |
+| Payload Mode               | Separate Topics                                       |
+| Power State Topic          | `tele/zigbee/E53A/SENSOR`                             |
+| Power Value Path           | `$.ZbReceived['0xE53A'].Power`                        |
+| Power Command Topic        | (empty: brightness switches the light)                |
+| State On / State Off       | `1` / `0`                                             |
+| Brightness State Topic     | `tele/zigbee/E53A/SENSOR`                             |
+| Brightness Value Path      | `$.ZbReceived['0xE53A'].Dimmer`                       |
+| Brightness Command Topic   | `cmnd/zigbee/ZbSend`                                  |
+| Brightness Command Payload | `{"Device":"spot1","Send":"0008!04/{hex8}{time16}"}`  |
+| Brightness Scale Max       | `254`                                                 |
+| Color Temp State Topic     | `tele/zigbee/E53A/SENSOR`                             |
+| Color Temp Value Path      | `$.ZbReceived['0xE53A'].CT`                           |
+| Color Temp Command Topic   | `cmnd/zigbee/ZbSend`                                  |
+| Color Temp Command Payload | `{"Device":"spot1","Send":"0300!0A/{hex16}{time16}"}` |
+| Color Temp Unit            | Mireds                                                |
+| Color Temp Min / Max       | the bulb's range in Kelvin, e.g. 2200 / 4000          |
+| Fade                       | Jump to Target                                        |
+
+The commands are the standard Zigbee ones with a fade time: `0008!04` (Move to
+Level with On/Off: level 0 turns the light off, any other level on) and
+`0300!0A` (Move to Color Temperature). The bulb does Control4's fades itself,
+including fading on and off. A plain switch uses
+`{"Device":"spot1","Send":{"Power":{value}}}` with Payload On / Off `1` / `0`
+instead. To check a bulb fades, run
+`ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}` on the gateway: it should go
+to full over 3 seconds.
 
 Messages without light values (for example only `LinkQuality`) are skipped. The
 short address in the state topics changes if the bulb is paired again. Without
