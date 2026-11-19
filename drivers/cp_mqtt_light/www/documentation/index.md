@@ -70,28 +70,29 @@ up immediately, no driver reload needed.
 
 # <span style="color:#660066">Features</span>
 
-| Ability           | Turned on by                                           | In Control4                             |
-| ----------------- | ------------------------------------------------------ | --------------------------------------- |
-| **On/Off**        | always                                                 | Switch                                  |
-| **Dimmer**        | a brightness topic (or a color format with brightness) | Dimmer with ramps, click and hold rates |
-| **Color Temp**    | a color temperature topic                              | Tunable white within your min/max       |
-| **Color**         | a color topic                                          | Full color picker                       |
-| **White Channel** | a white topic (RGBW lights)                            | A fixed color temperature preset        |
-| **Transition**    | a transition topic                                     | Fades run on the device                 |
+| Ability           | Turned on by                                            | In Control4                             |
+| ----------------- | ------------------------------------------------------- | --------------------------------------- |
+| **On/Off**        | always                                                  | Switch                                  |
+| **Dimmer**        | a brightness topic (or a color format with brightness)  | Dimmer with ramps, click and hold rates |
+| **Color Temp**    | a color temperature topic                               | Tunable white within your min/max       |
+| **Color**         | a color topic                                           | Full color picker                       |
+| **White Channel** | a white topic (RGBW lights)                             | A fixed color temperature preset        |
+| **Transition**    | a transition topic, or command payloads with `{time16}` | Fades run on the device                 |
 
 - **Three payload styles** - separate plain topics per ability (Tasmota,
   ESPHome), a single JSON state and command topic (Zigbee2MQTT, Home Assistant
   JSON schema), or Shelly Gen2+ RPC (Plus, Pro, Gen3, Gen4)
-- **Discovery** - pick a Tasmota or Shelly output from a list and every setting
-  is filled in
+- **Discovery** - pick a Tasmota or Shelly output, or a Zigbee light behind a
+  Tasmota Zigbee gateway, from a list and every setting is filled in
 - **Shared state topics** - several abilities can read from the same topic with
   their own JSONPath (e.g. Tasmota's `stat/<topic>/RESULT`)
 - **Color formats** - RGB, Hex (with or without `#`, including Tasmota's extra
   white channels), HSB, HS and CIE xy
 - **Keypad support** - top, bottom and toggle buttons with click and
   press-and-hold dimming
-- **Ramps without device support** - when the light has no transition topic, the
-  driver steps the brightness itself so holds and slow fades still work
+- **Ramps without device support** - when the light cannot fade by itself, the
+  driver steps the brightness (or, with Fade: Jump to Target, sends the final
+  level) so holds and slow fades still work
 - **Availability** - an optional availability topic marks the light offline in
   Control4
 
@@ -406,8 +407,10 @@ Color temperature of the white LEDs in Kelvin. Default `4000`.
 ##### Transition Command Topic / Transition Key
 
 Filling this in lets the device fade by itself. The fade time is sent before
-each command (or in the same JSON object). Without it, the driver steps
-brightness for ramps and keypad holds.
+each command (or in the same JSON object). Command payloads with `{time16}` do
+the same without a transition topic (Zigbee lights behind a Tasmota gateway);
+leave this empty for them. Without either, fades follow the
+[Fade](#fade--stepped--jump-to-target-) setting.
 
 ##### Transition Unit \[ **_Seconds_** | Tenths of a Second | Milliseconds | Tasmota Speed \]
 
@@ -416,18 +419,22 @@ on the device once with `Fade 1`.
 
 ##### Fade \[ **_Stepped_** | Jump to Target \]
 
-For a light without a transition topic. **Stepped** sends a fade as brightness
+For a light that cannot fade by itself (no transition topic and no `{time16}`
+command payloads); shown only then. **Stepped** sends a fade as brightness
 steps, at most every 250 ms (40 at most). **Jump to Target** sends one command
 with the final brightness and leaves the softening to the light; Control4 still
-shows the fade time. Zigbee bulbs smooth every change themselves, so steps make
-them stutter: picking a Zigbee light sets Jump to Target.
+shows the fade time.
+
+Picking a Zigbee light sets Jump to Target. Such a light fades by itself (the
+fade time is in its commands), so the setting is hidden; it is kept for the wait
+below, because the gateway reports levels it read during the fade.
 
 With Jump to Target, the driver also waits for the light to get there: for 2
 seconds (plus the fade time) after a command, reports of another level are taken
 as late ones, sent before the light arrived, and are not passed on to Control4.
 A report of the commanded level, or any report after that time, counts as usual.
-Keypad holds are always stepped (there is no end level until the button is
-released), every 500 ms at most.
+For a light that cannot fade by itself, keypad holds are always stepped (there
+is no end level until the button is released), every 500 ms at most.
 
 #### Button Links
 
@@ -595,14 +602,15 @@ instead, with the same Value Paths.
 - **Brightness and color together** - a brightness and a color command that
   arrive together are sent as one change (one JSON message in JSON mode).
 - **Keypad holds** - press-and-hold ramps toward full or off and stops where you
-  let go. With a transition topic the device fades; without one the driver steps
-  the brightness.
+  let go. A light that fades by itself fades toward full or off and gets the
+  level it reached on release; otherwise the driver steps the brightness.
 - **Ramps and scenes** - Advanced Lighting Scenes are supported, including
   stopping a ramping scene.
-- **Light groups** - the light can be a member of Control4 load groups such as a
-  Switch Group. A group's level, ramp and stop commands are carried out by each
-  MQTT Light on its own device. After updating from an earlier version, delete
-  and re-add the light in Composer so Composer offers it for groups.
+- **Light groups** - the light can be a member of a Control4 Dimmer Load Group
+  (a Switch Load Group only takes lights that cannot dim). A group's level, ramp
+  and stop commands are carried out by each MQTT Light on its own device. After
+  updating from an earlier version, delete and re-add the light in Composer so
+  Composer offers it for groups.
 
 ## Connections
 

@@ -196,9 +196,14 @@ Recommended on the gateway:
   `SetOption83` and `SetOption112`, which the driver learns from the messages.
 
 Commands go to `cmnd/<gateway>/ZbSend` and name the device by its IEEE address,
-so they keep working after a rename or a new short address. Color is not
-controlled through the gateway yet: on/off, brightness and color temperature
-are. Sensors, the IKEA STARKVIND and other non-light devices are not listed yet.
+so they keep working after a rename or a new short address. Brightness and color
+temperature are sent as the standard Zigbee commands with Control4's fade time
+(`0008!04` Move to Level with On/Off, `0300!0A` Move to Color Temperature), so
+the bulbs fade, turn on and turn off smoothly themselves. In the MQTT Light,
+Zigbee Light Type can set what a light is when the gateway has no type for it.
+Color is not controlled through the gateway yet: on/off, brightness and color
+temperature are. Sensors, the IKEA STARKVIND and other non-light devices are not
+listed yet.
 
 ## External Broker Setup
 
@@ -447,6 +452,16 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 ### Removed
 - Removed
 -->
+
+## v2026111910 - 2026-11-20
+
+### Changed
+
+- Documentation brought up to date: Zigbee lights fade by themselves (fade time
+  in their commands, so leave Transition Command Topic empty), when the Fade
+  setting applies and why Zigbee lights keep Jump to Target, keypad holds on
+  lights that fade by themselves, discovery of Zigbee lights, and load groups
+  (Dimmer Load Group; a Switch Load Group takes only lights that cannot dim).
 
 ## v2026111909 - 2026-11-19
 

@@ -18,6 +18,16 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111910 - 2026-11-20
+
+### Changed
+
+- Documentation brought up to date: Zigbee lights fade by themselves (fade time
+  in their commands, so leave Transition Command Topic empty), when the Fade
+  setting applies and why Zigbee lights keep Jump to Target, keypad holds on
+  lights that fade by themselves, discovery of Zigbee lights, and load groups
+  (Dimmer Load Group; a Switch Load Group takes only lights that cannot dim).
+
 ## v2026111909 - 2026-11-19
 
 ### Fixed
