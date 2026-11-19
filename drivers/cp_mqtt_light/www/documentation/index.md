@@ -89,6 +89,10 @@ up immediately, no driver reload needed.
   their own JSONPath (e.g. Tasmota's `stat/<topic>/RESULT`)
 - **Color formats** - RGB, Hex (with or without `#`, including Tasmota's extra
   white channels), HSB, HS and CIE xy
+- **Advanced Lighting Scenes** - full support: several steps per light with a
+  **Delay**, fade times, flash scenes, and ramping a scene up and down
+- **On modes and Daylight** - Default On and Previous On brightness; On color,
+  Previous color and Dim-To-Warm; follows the Daylight Agent through the day
 - **Keypad support** - top, bottom and toggle buttons with click and
   press-and-hold dimming
 - **Ramps without device support** - when the light cannot fade by itself, the
@@ -674,21 +678,37 @@ same commands arriving and the light's reports (`ZbReceived`).
 
 - **Color while off** - choosing a color while the light is off does not turn it
   on; the color is used the next time the light turns on.
-- **Default On color** - when the light turns on without a color, it uses the
-  Default On color preset (and dims toward the Dim color below the On level)
-  once Control4 has sent those presets to the driver.
+- **On modes** - an On (Navigator, keypad, programming) goes to the level of the
+  light's Brightness On Mode: its preset level, or with **Previous** the level
+  the light had when it last went off. Without a color of its own it takes the
+  Color On Mode's color: the preset's (On color, or the Daylight Agent's),
+  **Previous** (the color it went off in), or **Fade** (Dim-To-Warm: the On
+  color at the on level, warming toward the Dim color as it dims). The driver
+  reads these from the proxy at start and follows every change.
 - **Brightness and color together** - a brightness and a color command that
   arrive together are sent as one change (one JSON message in JSON mode).
 - **Keypad holds** - press-and-hold ramps toward full or off and stops where you
   let go. A light that fades by itself fades toward full or off and gets the
   level it reached on release; otherwise the driver steps the brightness.
-- **Ramps and scenes** - Advanced Lighting Scenes are supported, including
-  stopping a ramping scene.
+- **Advanced Lighting Scenes** - Control4 sends each scene to the light, and the
+  light runs its steps itself: each step waits its **Delay**, then sets its
+  brightness and/or color over its fade time, then the next step follows. A
+  flash scene repeats its steps until it is deactivated. Ramping a scene up or
+  down fades toward full or off in the color of the scene's last step, and stops
+  where you let go; a scene set to ignore ramps does not ramp. Any other
+  brightness command (Navigator, keypad, programming) ends the scene's later
+  steps. The scenes are kept when the controller restarts.
+- **Daylight Agent** - with the Daylight Agent's preset as the Color On Mode,
+  the light turns on in the agent's color and follows it as the agent moves it
+  through the day. It tells Control4 which preset its level and color come from;
+  picking a color by hand stops the following until the next On.
 - **Light groups** - the light can be a member of a Control4 Dimmer Load Group
   (a Switch Load Group only takes lights that cannot dim). A group's level, ramp
-  and stop commands are carried out by each MQTT Light on its own device. After
-  updating from an earlier version, delete and re-add the light in Composer so
-  Composer offers it for groups.
+  and stop commands are carried out by each MQTT Light on its own device.
+- **After updating from an earlier version** - Composer reads what a light can
+  do (load groups, full scene support with Delay, on modes) when the light is
+  added. A light added with an earlier version may need a controller reboot, or
+  to be deleted and added again, before Composer offers these.
 
 ## Connections
 

@@ -42,8 +42,15 @@
     <color_correlated_temperature_min>2000</color_correlated_temperature_min>
     <color_correlated_temperature_max>6500</color_correlated_temperature_max>
     <color_rate_behavior>0</color_rate_behavior>
-    <reduced_als_support>true</reduced_als_support>
-    <advanced_scene_support>false</advanced_scene_support>
+    <reduced_als_support>false</reduced_als_support>
+    <advanced_scene_support>true</advanced_scene_support>
+    <supports_broadcast_scenes>false</supports_broadcast_scenes>
+    <supports_multichannel_scenes>false</supports_multichannel_scenes>
+    <brightness_on_mode_preset>true</brightness_on_mode_preset>
+    <brightness_on_mode_previous>true</brightness_on_mode_previous>
+    <color_on_mode_preset>true</color_on_mode_preset>
+    <color_on_mode_previous>true</color_on_mode_previous>
+    <color_on_mode_fade>true</color_on_mode_fade>
     <load_group_support>true</load_group_support>
     <has_leds>true</has_leds>
     <cold_start>false</cold_start>

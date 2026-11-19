@@ -18,6 +18,31 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111912 - 2026-11-20
+
+### Added
+
+- MQTT Light: full Advanced Lighting Scene support. Control4 sends each scene
+  (`PUSH_SCENE`) to the light, which runs its steps itself: a **Delay** before
+  each step, its brightness and color with their fade times, flash scenes, and
+  scene ramps up and down with stop. Any other brightness command ends a scene's
+  later steps. Scenes are kept across restarts.
+- MQTT Light: on modes. Brightness On Mode Preset and Previous; Color On Mode
+  Preset, Previous and Fade (Dim-To-Warm). The light reads them from the proxy
+  at start (`GET_SETUP`) and follows every change.
+- MQTT Light: Daylight Agent support. The light reports the preset its level and
+  color come from (preset id and origin), turns on in the agent's color and
+  follows it through the day; a color picked by hand stops the following until
+  the next On.
+
+### Changed
+
+- The light now declares full scene support and the on mode capabilities.
+  Composer reads these when a light is added: a light added with an earlier
+  version may need a controller reboot, or to be deleted and added again, before
+  Composer offers Delay and the on modes. v2026111911 is the version to go back
+  to if needed.
+
 ## v2026111911 - 2026-11-20
 
 ### Changed
