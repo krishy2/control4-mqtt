@@ -206,12 +206,38 @@ function Zigbee.build(gw, d, old)
     light = cfg.light,
     clusters = cfg.clusters,
     colorMode = tonumber(d.ColorMode),
+    -- The gateway's answer, so a newer driver can read it again (Zigbee.rebuild).
+    raw = {
+      Device = d.Device,
+      Name = d.Name,
+      IEEEAddr = d.IEEEAddr,
+      ModelId = d.ModelId,
+      Manufacturer = d.Manufacturer,
+      Config = d.Config,
+      ColorMode = d.ColorMode,
+    },
   }
   if old ~= nil and old.short == short then
     dev.stateTopic = old.stateTopic
     dev.stateKey = old.stateKey
   end
   return dev
+end
+
+--- Read a saved device again from the gateway's answer it was made from, so
+--- what this driver version reads from it applies at once.
+--- @param dev table a saved device
+--- @return table the device, read again (the same one when it has no answer saved)
+function Zigbee.rebuild(dev)
+  if type(dev) ~= "table" or type(dev.raw) ~= "table" or type(dev.gateway) ~= "table" then
+    return dev
+  end
+  local again = Zigbee.build(dev.gateway, dev.raw, dev)
+  if again == nil then
+    return dev
+  end
+  again.gateway.style = dev.gateway.style
+  return again
 end
 
 --- The light type Tasmota has for the device, raised to what the device

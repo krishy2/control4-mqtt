@@ -115,6 +115,15 @@ T.eq("a soil sensor Tasmota calls a light (~01.1, no On/Off) is not one", #Zigbe
 T.eq("a light type alone is not enough", Zigbee.lightType({ light = { type = 2 }, clusters = {} }), nil)
 T.eq("a light type on Level counts", Zigbee.lightType({ light = { type = 5 }, clusters = { O = 1, L = 1 } }), 5)
 
+-- A device saved by an older version is read again from the saved answer.
+local saved = Zigbee.build(gw, Zigbee.parseResult(SPOT3).devices[1])
+saved.light, saved.clusters = nil, { O = 1 } -- as the older version read "L01.2"
+saved.stateTopic, saved.stateKey = "tele/zigbee/1582/SENSOR", "0x1582"
+local again = Zigbee.rebuild(JSON:decode(JSON:encode(saved)))
+T.eq("a saved switch is read again as a white light", Zigbee.loads(again)[1].label, "White light")
+T.eq("keeping where it reports", again.stateTopic, "tele/zigbee/1582/SENSOR")
+T.eq("a device saved without its answer stays as it was", Zigbee.rebuild({ name = "x" }).name, "x")
+
 -------------------------------------------------------------------------------
 T.section("MQTT Light properties")
 -------------------------------------------------------------------------------

@@ -253,8 +253,8 @@ local function onTasmotaDiscovery(mac, payload)
         persist:set(TASMOTA_RAW_PERSIST_KEY, tasmotaRaw)
       end)
     end
-    -- Any Tasmota may be a Zigbee gateway: ask (at most once a minute).
-    askZigbee(mac, dev, false)
+    -- Any Tasmota may be a Zigbee gateway: ask each time it (re)connects.
+    askZigbee(mac, dev, true)
     if sameValue(old, dev) then
       return
     end
@@ -634,6 +634,8 @@ local function onZigbeeLight(gw, lights)
       z.light = { endpoint = (z.clusters or {}).L or 1, type = lt }
       log:info("Zigbee device %s is now light type %d", z.name, lt)
       zigbeeChanged(ieee)
+      -- Read it again so the saved answer has the new type too.
+      publishOwn(Zigbee.detailTopic(gw.dev), z.short)
     end
   end
 end
@@ -991,6 +993,11 @@ function OnDriverInit()
   shellyDevices = persist:get(SHELLY_PERSIST_KEY, {}) or {}
   persist:setWriteBehind(ZIGBEE_PERSIST_KEY, 2 * ONE_SECOND)
   zigbeeDevices = persist:get(ZIGBEE_PERSIST_KEY, {}) or {}
+  -- Read the saved devices again, so what this version reads from them applies now.
+  for ieee, z in pairs(zigbeeDevices) do
+    local ok, again = pcall(Zigbee.rebuild, z)
+    zigbeeDevices[ieee] = ok and again or z
+  end
 end
 
 function OnDriverLateInit()

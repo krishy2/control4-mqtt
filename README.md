@@ -448,6 +448,16 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111904 - 2026-11-19
+
+### Fixed
+
+- Zigbee discovery kept showing lights as dimmers or switches after an update:
+  the saved list was read with the older version, and the gateway was not asked
+  again when it reconnected within a minute of an earlier ask (as it does after
+  the broker restarts). A gateway is now asked every time it connects, and the
+  broker keeps each device's answer and reads it again when it starts.
+
 ## v2026111903 - 2026-11-19
 
 ### Fixed
