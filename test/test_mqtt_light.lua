@@ -1024,6 +1024,74 @@ T.eq("leaving sends nothing", #publishes(), 0)
 T.eq("group commands are handled", grp:handleProxyCommand("SET_GROUP_SYNC", { GROUP_ID = "120" }), true)
 
 -------------------------------------------------------------------------------
+T.section("Discovered Device dropdown: Zigbee light behind a Tasmota gateway")
+-------------------------------------------------------------------------------
+local Zigbee = require("mqtt.tasmota_zigbee")
+local zbGateway = Tasmota.parse(
+  '{"ip":"10.0.0.9","dn":"Zigbee Gateway","fn":["Tasmota",null,null,null,null,null,null,null],"hn":"zb",'
+    .. '"mac":"A0B1C2D3E4F5","md":"ESP32","ofln":"Offline","onln":"Online","state":["OFF","ON","TOGGLE","HOLD"],'
+    .. '"sw":"14.3.0","t":"zigbee","ft":"%prefix%/%topic%/","tp":["cmnd","stat","tele"],"rl":[0,0,0,0,0,0,0,0],'
+    .. '"so":{"4":0},"lk":0,"lt_st":0,"ver":1}'
+)
+local zbDev = Zigbee.build(zbGateway, {
+  Device = "0xE53A",
+  Name = "spot1",
+  IEEEAddr = "0xA4C13837E8E485BF",
+  ModelId = "TS0502B",
+  Config = { "~01.1", "O01", "L01" },
+  ColorMode = 2,
+})
+reset()
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICES", {
+    devices = JSON:encode({ Shelly.summary(shellyDev), Zigbee.summary(zbDev) }),
+  })
+end)
+local zbLabel = "spot1 [zigbee] White light"
+T.contains("the dropdown offers the Zigbee light", lists["Discovered Device"].items, zbLabel)
+Properties["Discovered Device"] = zbLabel
+T.capture(function()
+  OnPropertyChanged("Discovered Device")
+end)
+T.eq("choosing it asks the broker for it", last(sentTo("GET_TASMOTA_DEVICE")).mac, "0xA4C13837E8E485BF")
+shellyNow = shellyNow + 10000
+reset()
+local zbApplied, zbErr = T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = zbDev.mac, device = JSON:encode(zbDev) })
+end)
+T.check("applying the Zigbee light runs without error", zbApplied, zbErr)
+T.eq("Zigbee settings", {
+  Properties["Payload Mode"],
+  Properties["Power State Topic"],
+  Properties["Brightness Command Topic"],
+  Properties["Color Temp Command Payload"],
+  Properties["Color Command Topic"],
+}, {
+  "Separate Topics",
+  "tele/zigbee/E53A/SENSOR",
+  "cmnd/zigbee/ZbSend",
+  '{"Device":"0xA4C13837E8E485BF","Send":{"CT":{value}}}',
+  "",
+})
+local zbCaps = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
+T.eq("capabilities: dimmer and color temperature, no color", {
+  zbCaps and zbCaps.dimmer,
+  zbCaps and zbCaps.supports_color_correlated_temperature,
+  zbCaps and zbCaps.supports_color,
+}, { "true", "true", "false" })
+T.eq("the light is renamed after the Zigbee device", last(ShimRenames()).name, "spot1")
+reset()
+T.capture(function()
+  ReceivedFromProxy(5001, "SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "100", RATE = "0" })
+  ShimFireTimers()
+end)
+T.contains(
+  "Control4 commands go through ZbSend",
+  table.concat(published("cmnd/zigbee/ZbSend"), " "),
+  '{"Device":"0xA4C13837E8E485BF","Send":{"Dimmer":254}}'
+)
+
+-------------------------------------------------------------------------------
 T.section("Command Payload templates (Tasmota Zigbee ZbSend)")
 -------------------------------------------------------------------------------
 local zbState = "tele/zigbee/E53A/SENSOR"

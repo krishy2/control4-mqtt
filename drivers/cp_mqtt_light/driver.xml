@@ -172,7 +172,7 @@
       <property>
         <name>Discovered Device</name>
         <type>DYNAMIC_LIST</type>
-        <description>Pick a Tasmota or Shelly light or relay found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+        <description>Pick a Tasmota, Shelly or Zigbee (Tasmota gateway) light or relay found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
       </property>
       <property>
         <name>Device Notes</name>

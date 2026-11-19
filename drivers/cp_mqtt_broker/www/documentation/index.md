@@ -72,6 +72,7 @@ The MQTT driver suite consists of seven drivers:
   - [Built-in Broker Setup](#built-in-broker-setup)
   - [External Broker Setup](#external-broker-setup)
   - [Shelly Setup](#shelly-setup)
+  - [Zigbee Gateway Setup](#zigbee-gateway-setup)
   - [Driver Properties](#driver-properties)
   - [Driver Actions](#driver-actions)
   - [Programming](#programming)
@@ -96,6 +97,8 @@ The MQTT driver suite consists of seven drivers:
   Fan drivers can set themselves up from a list
 - **Shelly discovery**: finds Shelly Gen2+ devices (Plus, Pro, Gen3, Gen4) and
   their dimmer, CCT, RGB, RGBW and relay outputs, for the same list
+- **Zigbee discovery**: finds the lights paired to Tasmota Zigbee gateways, for
+  the MQTT Light's list
 - Manages subscriptions for connected child drivers
 - Message caching for late-subscribing devices
 - Automatic updates of all MQTT drivers from GitHub
@@ -176,6 +179,37 @@ when it connects and every 15 minutes. In External mode a custom prefix with
 more than two levels is found only through that broadcast. Gen1 devices (Shelly
 1, 2.5, Dimmer 2, RGBW2, Bulb, Duo) are not supported.
 
+## Zigbee Gateway Setup
+
+Lights paired to a Tasmota Zigbee gateway are found in both modes and appear in
+the MQTT Light's Discovered Device list as, for example,
+`spot1 [zigbee] White light`. Nothing has to be set up beyond Tasmota discovery
+(`SetOption19 0`, the default).
+
+How it works: the driver sends `ZbStatus1` to every Tasmota it finds; a Zigbee
+gateway answers with its paired devices, and each is then read with
+`ZbStatus3 <device>`. A device is a light when Tasmota lists a light type
+(`~01.N` in its `Config`, set with `ZbLight`) or the On/Off and Level clusters
+(`O01`, `L01`). The list is read again when the gateway connects, every 15
+minutes, and when a device the driver does not know reports.
+
+Recommended on the gateway:
+
+- Name every device: `ZbName 0x372D,Kitchen_spot`. The name is used for the
+  light in Control4. Unnamed devices are listed by model and address.
+- Set the right light type: `ZbLight <device>,<type>` with 0 on/off, 1 dimmer, 2
+  white with color temperature, 3 RGB, 4 RGBW, 5 RGB with color temperature. A
+  light set as a dimmer that reports color temperature mode is offered as a
+  white light, and its Device Notes say which `ZbLight` to run.
+- `SetOption89 1` (a topic per device: `tele/zigbee/E53A/SENSOR`). Without it
+  every device reports on `tele/zigbee/SENSOR`; both work, and so do
+  `SetOption83` and `SetOption112`, which the driver learns from the messages.
+
+Commands go to `cmnd/<gateway>/ZbSend` and name the device by its IEEE address,
+so they keep working after a rename or a new short address. Color is not
+controlled through the gateway yet: on/off, brightness and color temperature
+are. Sensors, the IKEA STARKVIND and other non-light devices are not listed yet.
+
 ## External Broker Setup
 
 1. Set **Broker Mode** to `External`.
@@ -230,6 +264,12 @@ drivers reconnect on their own.
 
 How many Shelly Gen2+ devices the broker has found. See
 [Shelly Setup](#shelly-setup). The list is kept when the controller restarts.
+
+#### Zigbee Devices (read-only)
+
+How many devices are paired to the Tasmota Zigbee gateways the broker has found.
+See [Zigbee Gateway Setup](#zigbee-gateway-setup). The list is kept when the
+controller restarts.
 
 #### Tasmota Devices (read-only)
 
@@ -347,6 +387,22 @@ again, for example after renaming outputs on a Shelly. Run
 
 Clears the Shelly list. Connected devices are found again when they next connect
 or with [Find Shelly Devices](#find-shelly-devices).
+
+### Print Zigbee Devices
+
+Prints every Zigbee device found: name, short address, gateway, model, what it
+is (light type or `not a light`) and the topic it reports on.
+
+### Find Zigbee Devices
+
+Asks every Tasmota for its Zigbee devices and reads each one again, for example
+after pairing, renaming (`ZbName`) or `ZbLight`. Run
+[Print Zigbee Devices](#print-zigbee-devices) a few seconds later.
+
+### Forget Zigbee Devices
+
+Clears the Zigbee list. Run [Find Zigbee Devices](#find-zigbee-devices) to read
+it again.
 
 ### Update Drivers
 

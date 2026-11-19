@@ -30,6 +30,7 @@ local githubUpdater = require("lib.github-updater")
 local AutoBind = require("mqtt.autobind")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
+local Zigbee = require("mqtt.tasmota_zigbee")
 local Broker = require("mqtt.server.broker")
 local C4Server = require("mqtt.server.c4_server")
 
@@ -74,6 +75,15 @@ local shellyRpcId = 0
 local SHELLY_REFRESH_MS = 60 * 60 * 1000
 --- Defined in the Shelly discovery section; used when the broker connects.
 local findShellies
+local ZIGBEE_PERSIST_KEY = "ZigbeeDevices"
+--- Zigbee devices behind Tasmota Zigbee gateways, by IEEE address
+local zigbeeDevices = {}
+--- Gateways (Tasmota MAC) -> { topic, style, lastList, lastAsked }; not persisted
+local zigbeeGateways = {}
+--- External mode: topics this driver subscribed to for itself
+local ownSubscriptions = {}
+--- Defined in the Zigbee section; used when the broker connects.
+local findZigbee
 
 local EXTERNAL_PROPERTIES = { "Broker Settings", "Broker Address", "Port", "Username", "Password", "Keep Alive" }
 local BUILTIN_PROPERTIES = {
@@ -146,6 +156,10 @@ local function setConnected(connected)
     SetTimer("FindShellies", 2 * ONE_SECOND, function()
       findShellies()
     end)
+    -- Tasmotas known from before are asked for Zigbee devices too.
+    SetTimer("FindZigbee", 5 * ONE_SECOND, function()
+      findZigbee(false)
+    end)
   else
     C4:FireEvent("Broker Disconnected")
     notifyChildDrivers("BROKER_DISCONNECTED", {})
@@ -216,6 +230,9 @@ local function updateTasmotaProperty()
   UpdateProperty("Tasmota Devices", tostring(tasmotaCount()))
 end
 
+--- Defined in the Zigbee section.
+local askZigbee
+
 --- A device's discovery message arrived (an empty payload removes it).
 --- @param mac string
 --- @param payload string
@@ -236,6 +253,8 @@ local function onTasmotaDiscovery(mac, payload)
         persist:set(TASMOTA_RAW_PERSIST_KEY, tasmotaRaw)
       end)
     end
+    -- Any Tasmota may be a Zigbee gateway: ask (at most once a minute).
+    askZigbee(mac, dev, false)
     if sameValue(old, dev) then
       return
     end
@@ -394,6 +413,261 @@ local function handleShelly(topic, payload)
 end
 
 -----------------------------------------------------------------------
+-- Zigbee devices behind Tasmota Zigbee gateways
+-----------------------------------------------------------------------
+
+--- A gateway is asked for its device list at most this often.
+local ZIGBEE_ASK_MS = 60 * ONE_SECOND
+--- Answers to ZbStatus1 are waited for this long before a Tasmota counts as no gateway.
+local ZIGBEE_ANSWER_MS = 15 * ONE_SECOND
+--- Devices' details are asked one after the other, this far apart.
+local ZIGBEE_DETAIL_GAP_MS = 300
+
+local function zigbeeCount()
+  local n = 0
+  for _ in pairs(zigbeeDevices) do
+    n = n + 1
+  end
+  return n
+end
+
+local function updateZigbeeProperty()
+  UpdateProperty("Zigbee Devices", tostring(zigbeeCount()))
+end
+
+local function saveZigbee()
+  persist:defer(function()
+    persist:set(ZIGBEE_PERSIST_KEY, zigbeeDevices)
+  end)
+end
+
+--- External mode: subscribe for this driver's own use.
+local function subscribeOwn(topic)
+  if isBuiltIn() or ownSubscriptions[topic] then
+    return
+  end
+  ownSubscriptions[topic] = true
+  if MQTT_CONNECTED and MQTT and IsEmpty(subscriptions[topic]) then
+    MQTT:Subscribe(topic)
+  end
+end
+
+local function unsubscribeOwn(topic)
+  if not ownSubscriptions[topic] then
+    return
+  end
+  ownSubscriptions[topic] = nil
+  if not isBuiltIn() and MQTT_CONNECTED and MQTT and IsEmpty(subscriptions[topic]) then
+    MQTT:Unsubscribe(topic)
+  end
+end
+
+--- The gateway record for a Tasmota, made on first use.
+local function gatewayFor(mac, dev)
+  local gw = zigbeeGateways[mac]
+  if gw == nil then
+    gw = { mac = mac }
+    -- What earlier messages showed about its topics is kept with its devices.
+    for _, z in pairs(zigbeeDevices) do
+      if z.gateway and z.gateway.mac == mac and z.gateway.style then
+        gw.style = z.gateway.style
+        break
+      end
+    end
+    zigbeeGateways[mac] = gw
+  end
+  gw.dev = dev
+  return gw
+end
+
+--- Ask a Tasmota for its Zigbee devices.
+--- @param mac string the Tasmota's MAC
+--- @param dev table the parsed Tasmota device
+--- @param force boolean ask even if asked within the last minute
+askZigbee = function(mac, dev, force)
+  if not MQTT_CONNECTED then
+    return
+  end
+  local gw = gatewayFor(mac, dev)
+  local now = C4:GetTime()
+  if not force and gw.lastAsked ~= nil and now - gw.lastAsked < ZIGBEE_ASK_MS then
+    return
+  end
+  gw.lastAsked = now
+  local result = Zigbee.resultTopic(dev)
+  subscribeOwn(result)
+  -- The subscription needs a moment before the answer can arrive.
+  SetTimer("ZigbeeAsk " .. mac, ONE_SECOND, function()
+    publishOwn(Zigbee.listTopic(dev), "")
+  end)
+  if not gw.isGateway then
+    SetTimer("ZigbeeAnswer " .. mac, ZIGBEE_ANSWER_MS, function()
+      if not gw.isGateway then
+        -- Not a Zigbee gateway: stop listening to its answers.
+        unsubscribeOwn(result)
+      end
+    end)
+  end
+end
+
+--- Ask every known Tasmota (gateways included) for its Zigbee devices.
+findZigbee = function(force)
+  for mac, dev in pairs(tasmotaDevices) do
+    askZigbee(mac, dev, force)
+  end
+end
+
+--- Tell child drivers a Zigbee device appeared, changed or went away.
+local function zigbeeChanged(ieee)
+  saveZigbee()
+  updateZigbeeProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", { mac = ieee })
+end
+
+--- Put what the gateway's messages showed into every device behind it.
+local function applyStyle(gw)
+  for ieee, z in pairs(zigbeeDevices) do
+    if z.gateway and z.gateway.mac == gw.mac and not sameValue(z.gateway.style, gw.style) then
+      z.gateway.style = gw.style
+      if z.stateTopic == nil then
+        zigbeeChanged(ieee)
+      end
+    end
+  end
+end
+
+--- The gateway listed its devices (ZbStatus1).
+local function onZigbeeList(gw, list)
+  local dev = gw.dev
+  if not gw.isGateway then
+    gw.isGateway = true
+    log:info("Tasmota %s (%s) is a Zigbee gateway with %d devices", dev.name, dev.topic, #list)
+    subscribeOwn(Zigbee.resultTopic(dev))
+    subscribeOwn(Zigbee.sensorTopic(dev))
+    subscribeOwn(Zigbee.deviceSensorFilter(dev))
+  end
+  gw.lastList = C4:GetTime()
+  local listed = {}
+  for i, d in ipairs(list) do
+    listed[d.short] = true
+    SetTimer("ZigbeeDetail " .. gw.mac .. " " .. d.short, i * ZIGBEE_DETAIL_GAP_MS, function()
+      publishOwn(Zigbee.detailTopic(dev), d.short)
+    end)
+  end
+  -- Devices no longer paired to this gateway
+  for ieee, z in pairs(zigbeeDevices) do
+    if z.gateway and z.gateway.mac == gw.mac and not listed[z.short] then
+      log:info("Zigbee device %s (%s) is no longer paired to %s", z.name, z.short, dev.topic)
+      zigbeeDevices[ieee] = nil
+      zigbeeChanged(ieee)
+    end
+  end
+end
+
+--- The gateway described devices (ZbStatus3).
+local function onZigbeeDetail(gw, entries)
+  for _, d in ipairs(entries) do
+    local ieee = d.IEEEAddr and ("0x" .. tostring(d.IEEEAddr):sub(3):upper()) or nil
+    local old = ieee and zigbeeDevices[ieee] or nil
+    local z = Zigbee.build(gw.dev, d, old)
+    if z ~= nil then
+      z.gateway.style = gw.style
+      if not sameValue(old, z) then
+        local loads = Zigbee.loads(z)
+        log:info(
+          "Zigbee device %s (%s, %s) on %s %s: %s",
+          z.name,
+          z.short,
+          z.model or "unknown model",
+          gw.dev.topic,
+          old and "changed" or "discovered",
+          loads[1] and loads[1].label or "not a light"
+        )
+        zigbeeDevices[z.ieee] = z
+        zigbeeChanged(z.ieee)
+      end
+    end
+  end
+end
+
+--- A gateway reported device values (ZbReceived): learn where each device reports.
+local function onZigbeeReceived(gw, topic, entries)
+  local unknown = false
+  for key, entry in pairs(entries) do
+    if type(entry) == "table" then
+      local short = Zigbee.shortAddress(entry.Device)
+      local found
+      for ieee, z in pairs(zigbeeDevices) do
+        if z.gateway and z.gateway.mac == gw.mac and (z.short == short or z.name == key) then
+          found = ieee
+          break
+        end
+      end
+      if found == nil then
+        unknown = true
+      else
+        local z = zigbeeDevices[found]
+        local style = Zigbee.styleFrom(gw.dev, topic, key, z)
+        if not sameValue(gw.style, style) then
+          gw.style = style
+          applyStyle(gw)
+        end
+        if z.stateTopic ~= topic or z.stateKey ~= key then
+          z.stateTopic, z.stateKey = topic, key
+          log:debug("Zigbee device %s reports on %s as '%s'", z.name, topic, key)
+          zigbeeChanged(found)
+        end
+      end
+    end
+  end
+  if unknown then
+    -- A device newly paired, or renamed: read the list again (once a minute at most).
+    askZigbee(gw.mac, gw.dev, false)
+  end
+end
+
+--- Handle a message if it belongs to a Zigbee gateway.
+--- @return boolean handled true for this driver's own topics
+local function handleZigbee(topic, payload)
+  if next(zigbeeGateways) == nil then
+    return false
+  end
+  local ok, handled = pcall(function()
+    for _, gw in pairs(zigbeeGateways) do
+      local dev = gw.dev
+      if dev ~= nil then
+        if topic == Zigbee.resultTopic(dev) then
+          local r = Zigbee.parseResult(payload)
+          if r ~= nil and r.kind == "list" then
+            onZigbeeList(gw, r.devices)
+          elseif r ~= nil and r.kind == "detail" and gw.isGateway then
+            onZigbeeDetail(gw, r.devices)
+          end
+          return ownSubscriptions[topic] == true
+        end
+        if gw.isGateway then
+          local sensor = Zigbee.sensorTopic(dev)
+          local prefix = sensor:sub(1, -#"SENSOR" - 1)
+          if topic == sensor or (topic:sub(1, #prefix) == prefix and topic:match("^[^/]+/SENSOR$", #prefix + 1)) then
+            local entries = Zigbee.parseReceived(payload)
+            if entries ~= nil then
+              onZigbeeReceived(gw, topic, entries)
+            end
+            return true
+          end
+        end
+      end
+    end
+    return false
+  end)
+  if not ok then
+    log:error("Zigbee discovery from %s failed: %s", topic, handled)
+    return true
+  end
+  return handled
+end
+
+-----------------------------------------------------------------------
 -- Built-in mode
 -----------------------------------------------------------------------
 
@@ -434,6 +708,7 @@ local function ensureBuiltIn()
       log:trace("Built-in broker: %s -> %s", tostring(clientId or "driver"), topic)
       handleDiscovery(topic, payload)
       handleShelly(topic, payload)
+      handleZigbee(topic, payload)
       local devices = subscriptions[topic]
       if IsEmpty(devices) then
         return
@@ -548,6 +823,12 @@ local function connectExternal()
           MQTT:Subscribe(topic)
         end
       end
+      -- This driver's own topics (Zigbee gateways)
+      for topic in pairs(ownSubscriptions) do
+        if IsEmpty(subscriptions[topic]) then
+          MQTT:Subscribe(topic)
+        end
+      end
       -- Tasmota discovery (retained, so the broker sends what it has)
       MQTT:Subscribe(Tasmota.DISCOVERY_FILTER)
       -- Shelly discovery: announces, online messages and RPC answers
@@ -600,6 +881,7 @@ local function connectExternal()
     log:debug("MQTT:OnMessage msgId=%s topic=%s payload=%s qos=%s retain=%s", msgId, topic, payload, qos, retain)
     local discovery = handleDiscovery(topic, payload)
     discovery = handleShelly(topic, payload) or discovery
+    discovery = handleZigbee(topic, payload) or discovery
     if discovery and IsEmpty(subscriptions[topic]) then
       return
     end
@@ -691,6 +973,8 @@ function OnDriverInit()
   end
   persist:setWriteBehind(SHELLY_PERSIST_KEY, 10 * ONE_SECOND)
   shellyDevices = persist:get(SHELLY_PERSIST_KEY, {}) or {}
+  persist:setWriteBehind(ZIGBEE_PERSIST_KEY, 10 * ONE_SECOND)
+  zigbeeDevices = persist:get(ZIGBEE_PERSIST_KEY, {}) or {}
 end
 
 function OnDriverLateInit()
@@ -721,10 +1005,17 @@ function OnDriverLateInit()
   updateModeVisibility()
   updateTasmotaProperty()
   updateShellyProperty()
+  updateZigbeeProperty()
   Connect()
   -- Catch devices whose online message was missed (e.g. deeper topic prefixes).
   SetTimer("FindShelliesPeriodic", 15 * ONE_MINUTE, function()
     findShellies()
+    -- Newly paired or renamed Zigbee devices
+    for mac, gw in pairs(zigbeeGateways) do
+      if gw.isGateway then
+        askZigbee(mac, gw.dev, false)
+      end
+    end
   end, true)
 
   -- After an update: say whether every driver got the new version, once the
@@ -957,7 +1248,7 @@ local function dropTopic(topic)
   subscriptions[topic] = nil
   if isBuiltIn() then
     lastMessages[topic] = nil
-  elseif MQTT_CONNECTED and MQTT then
+  elseif MQTT_CONNECTED and MQTT and not ownSubscriptions[topic] then
     log:debug("Unsubscribing from topic: %s", topic)
     MQTT:Unsubscribe(topic)
   end
@@ -1038,6 +1329,20 @@ function RFP.GET_TASMOTA_DEVICES(idBinding, strCommand, tParams, args)
       list[#list + 1] = Shelly.summary(dev)
     end
   end
+  -- Zigbee lights go to MQTT Light drivers only (the others have nothing to use them for yet).
+  local isLight = false
+  for _, id in ipairs(AutoBind.devices("cp_mqtt_light.c4z")) do
+    if id == deviceId then
+      isLight = true
+    end
+  end
+  if isLight then
+    for _, dev in pairs(zigbeeDevices) do
+      if #Zigbee.loads(dev) > 0 then
+        list[#list + 1] = Zigbee.summary(dev)
+      end
+    end
+  end
   table.sort(list, function(a, b)
     return a.name:lower() .. a.topic < b.name:lower() .. b.topic
   end)
@@ -1052,7 +1357,7 @@ function RFP.GET_TASMOTA_DEVICE(idBinding, strCommand, tParams, args)
     log:warn("GET_TASMOTA_DEVICE needs device_id and mac")
     return
   end
-  local dev = tasmotaDevices[mac] or shellyDevices[mac]
+  local dev = tasmotaDevices[mac] or shellyDevices[mac] or zigbeeDevices[mac]
   SendToDevice(deviceId, "TASMOTA_DEVICE", { mac = mac, device = dev and JSON:encode(dev) or "" })
 end
 
@@ -1140,6 +1445,52 @@ function EC.ForgetShellyDevices()
   updateShellyProperty()
   notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
   log:print("Forgot all Shelly devices; connected ones are listed again when they next announce")
+end
+
+function EC.PrintZigbeeDevices()
+  local list = {}
+  for _, dev in pairs(zigbeeDevices) do
+    list[#list + 1] = dev
+  end
+  table.sort(list, function(a, b)
+    return (a.topic .. a.name):lower() < (b.topic .. b.name):lower()
+  end)
+  local lines = { string.format("==== %d Zigbee devices ====", #list) }
+  for _, dev in ipairs(list) do
+    local loads = Zigbee.loads(dev)
+    local stateTopic = Zigbee.state(dev)
+    lines[#lines + 1] = string.format(
+      "%-20s %-7s %-12s %-24s %-20s %s",
+      dev.name:sub(1, 20),
+      dev.short,
+      tostring(dev.topic):sub(1, 12),
+      (dev.model or ""):sub(1, 24),
+      loads[1] and loads[1].label or "not a light",
+      dev.stateTopic and stateTopic or (stateTopic .. " (not seen yet)")
+    )
+  end
+  print(table.concat(lines, "\n"))
+end
+
+function EC.FindZigbeeDevices()
+  if not MQTT_CONNECTED then
+    log:print("Not connected to a broker; Zigbee gateways cannot be asked now")
+    return
+  end
+  findZigbee(true)
+  log:print("Asked every Tasmota for its Zigbee devices; run Print Zigbee Devices in a few seconds")
+end
+
+function EC.ForgetZigbeeDevices()
+  zigbeeDevices = {}
+  for _, gw in pairs(zigbeeGateways) do
+    gw.style = nil
+    gw.lastAsked = nil
+  end
+  persist:set(ZIGBEE_PERSIST_KEY, nil)
+  updateZigbeeProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
+  log:print("Forgot all Zigbee devices; run Find Zigbee Devices to read them again")
 end
 
 -- Action: Reconnect (External) / Restart (Built-in)

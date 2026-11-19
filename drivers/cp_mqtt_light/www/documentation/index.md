@@ -171,7 +171,11 @@ setting below. For Tasmota: topics, value paths, `POWER<n>`, dimmer scale, color
 temperature range, color format, state request and Online/Offline. For Shelly:
 [Payload Mode](#payload-mode--separate-topics--json--shelly-gen2-)
 `Shelly (Gen2+)`, the topic prefix and output, color temperature range, state
-request and Online/Offline.
+request and Online/Offline. For a Zigbee light behind a Tasmota Zigbee gateway
+(`spot1 [zigbee] White light`): the gateway's `ZbSend` topic with a
+[Command Payload](#command-payload-power-brightness-color-temp-color-white) per
+ability, the state topic and value paths, scales and Online/Offline of the
+gateway.
 
 Picking a device also renames the light in Composer and Navigator.
 
@@ -182,6 +186,8 @@ Picking a device also renames the light in Composer and Navigator.
 - Shelly: the output's name when it has one, otherwise the device name (with the
   output when the device has several, `Kitchen Dimmer 2`), otherwise the device
   ID.
+- Zigbee: the device's name on the gateway (`ZbName`), otherwise its model and
+  address.
 
 This happens only when you pick a device, so a name you change afterwards stays.
 
@@ -497,6 +503,9 @@ Zigbee2MQTT's `color_mode` field tells the driver whether the bulb is in color
 or color temperature mode.
 
 ## Example: Tasmota Zigbee bridge
+
+These are the settings Discovered Device fills in for a Zigbee light (it names
+the device by its IEEE address rather than `spot1`); they also work by hand.
 
 A Zigbee bulb with brightness and color temperature, paired to a Tasmota Zigbee
 bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and

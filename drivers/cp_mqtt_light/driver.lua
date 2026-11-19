@@ -22,6 +22,7 @@ local MqttDevice = require("mqtt.entities.device")
 local MqttLight = require("mqtt.light")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
+local Zigbee = require("mqtt.tasmota_zigbee")
 local ButtonLinks = require("mqtt.button_links")
 
 -- Binding IDs
@@ -692,11 +693,17 @@ end
 --- Fill in every setting for the chosen device and output.
 --- The codec for a discovered device.
 local function moduleFor(dev)
-  return dev.type == "shelly" and Shelly or Tasmota
+  if dev.type == "shelly" then
+    return Shelly
+  end
+  return dev.type == Zigbee.TYPE and Zigbee or Tasmota
 end
 
 local function kindName(dev)
-  return dev.type == "shelly" and "Shelly" or "Tasmota"
+  if dev.type == "shelly" then
+    return "Shelly"
+  end
+  return dev.type == Zigbee.TYPE and "Zigbee" or "Tasmota"
 end
 
 --- Rename the light (as Composer and Navigator show it) after a discovered output.
@@ -752,8 +759,15 @@ local function applyTasmotaDevice(dev)
   end
   -- A Tasmota fade topic (cmnd/<topic>/Speed) follows the device; anything else stays.
   local transition = Properties["Transition Command Topic"] or ""
-  if dev.type ~= "shelly" and transition:match("/Speed$") then
+  if dev.type == nil and transition:match("/Speed$") then
     props["Transition Command Topic"] = Tasmota.topicFor(dev, 1, "Speed")
+  end
+  -- Command payload templates belong to the device they were made for.
+  for _, feature in ipairs({ "Power", "Brightness", "Color Temp", "Color", "White" }) do
+    local name = feature .. " Command Payload"
+    if props[name] == nil then
+      props[name] = ""
+    end
   end
 
   local changed = {}

@@ -18,6 +18,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111901 - 2026-11-19
+
+### Added
+
+- MQTT Broker: Zigbee discovery. Every Tasmota is asked `ZbStatus1`; a Zigbee
+  gateway's devices are read with `ZbStatus3`, and its lights (light type from
+  `ZbLight`, or the On/Off and Level clusters) appear in the MQTT Light's
+  Discovered Device list. New Zigbee Devices property and Print, Find and Forget
+  Zigbee Devices actions.
+- MQTT Light: picking a Zigbee light fills in the `ZbSend` command payloads
+  (device named by IEEE address), state topic and value paths (learnt from the
+  gateway's messages: SetOption89, 83 and 112), scales and the gateway's
+  Online/Offline, and renames the light after the device. Device Notes say when
+  `ZbLight` or `ZbName` should be run.
+
 ## v2026111900 - 2026-11-19
 
 ### Added
