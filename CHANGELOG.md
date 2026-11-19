@@ -18,6 +18,16 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111900 - 2026-11-19
+
+### Added
+
+- MQTT Light: Command Payload templates for Power, Brightness, Color Temp, Color
+  and White (`{value}` is the value), for lights that need the value inside a
+  bigger message, such as Tasmota Zigbee `ZbSend`
+  (`{"Device":"spot1","Send":{"Dimmer":{value}}}`). The light documentation has
+  a Tasmota Zigbee bridge example.
+
 ## v2026103100 - 2026-10-31
 
 ### Added

@@ -480,6 +480,20 @@ function MqttLight:_notify(command, params)
   SendToProxy(self.proxyBinding, command, params or {}, "NOTIFY")
 end
 
+--- A command payload: the template with {value} replaced, or the value itself
+--- when there is no template (e.g. Tasmota Zigbee ZbSend
+--- {"Device":"spot1","Send":{"Dimmer":{value}}}).
+--- @param template string|nil
+--- @param value any
+--- @return string
+function MqttLight.commandPayload(template, value)
+  template = trim(template or "")
+  if template == "" then
+    return tostring(value)
+  end
+  return (template:gsub("{value}", (tostring(value):gsub("%%", "%%%%"))))
+end
+
 function MqttLight:_publish(topic, payload)
   topic = trim(topic)
   if topic == "" then
@@ -1233,57 +1247,60 @@ function MqttLight:_send(cmd)
   local function cmdTopic(name)
     return trim((topics[name] or {}).commandTopic or "")
   end
+  local function send(name, value)
+    self:_publish(cmdTopic(name), MqttLight.commandPayload((topics[name] or {}).commandTemplate, value))
+  end
 
   if c.transition and cmd.rate ~= nil then
-    self:_publish(cmdTopic("transition"), self:_transitionValue(cmd.rate))
+    send("transition", self:_transitionValue(cmd.rate))
   end
 
   if turningOff then
     if cmdTopic("power") ~= "" then
-      self:_publish(cmdTopic("power"), notEmpty(self.cfg.payloadOff) and self.cfg.payloadOff or "OFF")
+      send("power", notEmpty(self.cfg.payloadOff) and self.cfg.payloadOff or "OFF")
     elseif cmdTopic("brightness") ~= "" then
-      self:_publish(cmdTopic("brightness"), 0)
+      send("brightness", 0)
     elseif c.colorBrightness and cmdTopic("color") ~= "" then
       local cur = self:_currentColor()
-      self:_publish(cmdTopic("color"), self:_colorValue(cur.x, cur.y, 0))
+      send("color", self:_colorValue(cur.x, cur.y, 0))
     elseif cmdTopic("white") ~= "" then
-      self:_publish(cmdTopic("white"), 0)
+      send("white", 0)
     end
     return
   end
 
   if cmd.power == true and cmdTopic("power") ~= "" then
-    self:_publish(cmdTopic("power"), notEmpty(self.cfg.payloadOn) and self.cfg.payloadOn or "ON")
+    send("power", notEmpty(self.cfg.payloadOn) and self.cfg.payloadOn or "ON")
   end
 
   local colorCarriedLevel = false
   local whiteCarriedLevel = false
   if color ~= nil then
     if color.mode == MqttLight.COLOR_MODE_CCT and cmdTopic("colorTemp") ~= "" then
-      self:_publish(cmdTopic("colorTemp"), self:_colorTempValue(Color.xyToCct(color.x, color.y)))
+      send("colorTemp", self:_colorTempValue(Color.xyToCct(color.x, color.y)))
     elseif color.mode == MqttLight.COLOR_MODE_CCT and cmdTopic("white") ~= "" then
-      self:_publish(cmdTopic("white"), self:_whiteValue(c.brightness and 100 or effLevel))
+      send("white", self:_whiteValue(c.brightness and 100 or effLevel))
       whiteCarriedLevel = not c.brightness
     elseif cmdTopic("color") ~= "" then
-      self:_publish(cmdTopic("color"), self:_colorValue(color.x, color.y, effLevel))
+      send("color", self:_colorValue(color.x, color.y, effLevel))
       colorCarriedLevel = c.colorBrightness
     elseif cmdTopic("colorTemp") ~= "" then
-      self:_publish(cmdTopic("colorTemp"), self:_colorTempValue(Color.xyToCct(color.x, color.y)))
+      send("colorTemp", self:_colorTempValue(Color.xyToCct(color.x, color.y)))
     end
   end
 
   if level ~= nil and level > 0 then
     if cmdTopic("brightness") ~= "" then
-      self:_publish(cmdTopic("brightness"), self:_brightnessValue(level))
+      send("brightness", self:_brightnessValue(level))
     elseif not colorCarriedLevel and not whiteCarriedLevel then
       local inWhite = self.device.mode == MqttLight.COLOR_MODE_CCT and c.white and not c.colorTemp
       if inWhite and cmdTopic("white") ~= "" then
-        self:_publish(cmdTopic("white"), self:_whiteValue(level))
+        send("white", self:_whiteValue(level))
       elseif c.colorBrightness and cmdTopic("color") ~= "" then
         local cur = self:_currentColor()
-        self:_publish(cmdTopic("color"), self:_colorValue(cur.x, cur.y, level))
+        send("color", self:_colorValue(cur.x, cur.y, level))
       elseif cmdTopic("white") ~= "" and not c.color and not c.colorTemp then
-        self:_publish(cmdTopic("white"), self:_whiteValue(level))
+        send("white", self:_whiteValue(level))
       end
     end
   end

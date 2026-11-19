@@ -1023,4 +1023,76 @@ grpRun("LEAVE_GROUP", { GROUP_ID = "120" })
 T.eq("leaving sends nothing", #publishes(), 0)
 T.eq("group commands are handled", grp:handleProxyCommand("SET_GROUP_SYNC", { GROUP_ID = "120" }), true)
 
+-------------------------------------------------------------------------------
+T.section("Command Payload templates (Tasmota Zigbee ZbSend)")
+-------------------------------------------------------------------------------
+local zbState = "tele/zigbee/E53A/SENSOR"
+local function zbFeature(key)
+  return {
+    stateTopic = zbState,
+    valuePath = "$.ZbReceived['0xE53A']." .. key,
+    commandTopic = "cmnd/zigbee/ZbSend",
+    commandTemplate = '{"Device":"spot1","Send":{"' .. key .. '":{value}}}',
+  }
+end
+reset()
+local zb = newLight({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "Auto",
+  colorTempUnit = "Mireds",
+  stateOn = "1",
+  stateOff = "0",
+  payloadOn = "1",
+  payloadOff = "0",
+  brightnessMax = 254,
+  colorTempMin = 2200,
+  colorTempMax = 4000,
+  topics = {
+    power = zbFeature("Power"),
+    brightness = zbFeature("Dimmer"),
+    colorTemp = zbFeature("CT"),
+    color = {},
+    white = {},
+    transition = {},
+  },
+})
+T.eq("a zigbee light is a tunable white dimmer", { zb.caps.dimmer, zb.caps.colorTemp, zb.caps.color }, {
+  true,
+  true,
+  false,
+})
+zb:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "0" })
+ShimFireTimers()
+T.eq("on and brightness go in the templates", published("cmnd/zigbee/ZbSend"), {
+  '{"Device":"spot1","Send":{"Power":1}}',
+  '{"Device":"spot1","Send":{"Dimmer":127}}',
+})
+zb:onMessage(zbState, '{"ZbReceived":{"0xE53A":{"Device":"0xE53A","Name":"spot1","Power":1,"Dimmer":127,"CT":370}}}')
+T.eq("ZbReceived feedback reports the level", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 50)
+local before = #notifies("LIGHT_BRIGHTNESS_CHANGED")
+zb:onMessage(zbState, '{"ZbReceived":{"0xE53A":{"Device":"0xE53A","Name":"spot1","LinkQuality":80}}}')
+T.eq("a message without light values changes nothing", #notifies("LIGHT_BRIGHTNESS_CHANGED"), before)
+
+reset()
+local zx, zy = Color.cctToXy(2700)
+zb:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(zx),
+  LIGHT_COLOR_TARGET_Y = tostring(zy),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+ShimFireTimers()
+T.eq("color temperature goes in its template", published("cmnd/zigbee/ZbSend"), {
+  '{"Device":"spot1","Send":{"CT":370}}',
+})
+
+reset()
+zb:handleProxyCommand("OFF", {})
+ShimFireTimers()
+T.eq("off goes in the power template", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot1","Send":{"Power":0}}' })
+
+T.eq("no template sends the value itself", MqttLight.commandPayload("", 50), "50")
+T.eq("nil template sends the value itself", MqttLight.commandPayload(nil, "ON"), "ON")
+T.eq("a % in the value is kept", MqttLight.commandPayload("x={value}", "5%"), "x=5%")
+
 T.finish()

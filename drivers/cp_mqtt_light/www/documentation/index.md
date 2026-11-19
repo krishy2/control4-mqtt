@@ -54,6 +54,7 @@ up immediately, no driver reload needed.
   - [Example: Tasmota](#example-tasmota)
   - [Example: Shelly](#example-shelly)
   - [Example: Zigbee2MQTT](#example-zigbee2mqtt)
+  - [Example: Tasmota Zigbee bridge](#example-tasmota-zigbee-bridge)
   - [How the Light Behaves](#how-the-light-behaves)
   - [Connections](#connections)
   - [Programming](#programming)
@@ -281,6 +282,14 @@ opposite. Defaults `ON` / `OFF`.
 
 Values sent to turn the light on and off. Defaults `ON` / `OFF`.
 
+##### Command Payload (Power, Brightness, Color Temp, Color, White)
+
+Optional payload template for that ability's commands, shown once its command
+topic is set: `{value}` is replaced by the value (Payload On or Payload Off for
+power). Empty sends the value itself. Use it when the value has to sit inside a
+bigger message, as with Tasmota's Zigbee `ZbSend`; see
+[Example: Tasmota Zigbee bridge](#example-tasmota-zigbee-bridge).
+
 #### Dimmer
 
 ##### Brightness State Topic / Brightness Value Path / Brightness Command Topic
@@ -486,6 +495,39 @@ For a Zigbee2MQTT bulb named `Kitchen`:
 
 Zigbee2MQTT's `color_mode` field tells the driver whether the bulb is in color
 or color temperature mode.
+
+## Example: Tasmota Zigbee bridge
+
+A Zigbee bulb with brightness and color temperature, paired to a Tasmota Zigbee
+bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and
+`SetOption89 1` so each device reports on its own topic. Every command goes to
+`ZbSend` with the device named in the message.
+
+| Property                   | Value                                          |
+| -------------------------- | ---------------------------------------------- |
+| Payload Mode               | Separate Topics                                |
+| Power State Topic          | `tele/zigbee/E53A/SENSOR`                      |
+| Power Value Path           | `$.ZbReceived['0xE53A'].Power`                 |
+| Power Command Topic        | `cmnd/zigbee/ZbSend`                           |
+| Power Command Payload      | `{"Device":"spot1","Send":{"Power":{value}}}`  |
+| State On / State Off       | `1` / `0`                                      |
+| Payload On / Payload Off   | `1` / `0`                                      |
+| Brightness State Topic     | `tele/zigbee/E53A/SENSOR`                      |
+| Brightness Value Path      | `$.ZbReceived['0xE53A'].Dimmer`                |
+| Brightness Command Topic   | `cmnd/zigbee/ZbSend`                           |
+| Brightness Command Payload | `{"Device":"spot1","Send":{"Dimmer":{value}}}` |
+| Brightness Scale Max       | `254`                                          |
+| Color Temp State Topic     | `tele/zigbee/E53A/SENSOR`                      |
+| Color Temp Value Path      | `$.ZbReceived['0xE53A'].CT`                    |
+| Color Temp Command Topic   | `cmnd/zigbee/ZbSend`                           |
+| Color Temp Command Payload | `{"Device":"spot1","Send":{"CT":{value}}}`     |
+| Color Temp Unit            | Mireds                                         |
+| Color Temp Min / Max       | the bulb's range in Kelvin, e.g. 2200 / 4000   |
+
+Messages without light values (for example only `LinkQuality`) are skipped. The
+short address in the state topics changes if the bulb is paired again. Without
+`SetOption89` every device reports on `tele/zigbee/SENSOR`; use that topic
+instead, with the same Value Paths.
 
 ## How the Light Behaves
 

@@ -285,6 +285,12 @@
         <description>Topic to publish on/off commands to (e.g. cmnd/tasmota_light/POWER)</description>
       </property>
       <property>
+        <name>Power Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for on/off commands: {value} is replaced by Payload On or Payload Off. Empty sends the value itself. E.g. {"Device":"spot1","Send":{"Power":{value}}} with Payload On 1 and Payload Off 0 for Tasmota Zigbee ZbSend.</description>
+      </property>
+      <property>
         <name>State Key</name>
         <type>STRING</type>
         <default>state</default>
@@ -339,6 +345,12 @@
         <description>Topic to publish brightness commands to (e.g. cmnd/tasmota_light/Dimmer)</description>
       </property>
       <property>
+        <name>Brightness Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for brightness commands: {value} is replaced by the brightness value. Empty sends the value itself. E.g. {"Device":"spot1","Send":{"Dimmer":{value}}} for Tasmota Zigbee ZbSend.</description>
+      </property>
+      <property>
         <name>Brightness Key</name>
         <type>STRING</type>
         <default/>
@@ -375,6 +387,12 @@
         <type>STRING</type>
         <default/>
         <description>Topic to publish color temperature commands to (e.g. cmnd/tasmota_light/CT)</description>
+      </property>
+      <property>
+        <name>Color Temp Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for color temperature commands: {value} is replaced by the color temperature value. Empty sends the value itself. E.g. {"Device":"spot1","Send":{"CT":{value}}} for Tasmota Zigbee ZbSend.</description>
       </property>
       <property>
         <name>Color Temp Key</name>
@@ -431,6 +449,12 @@
         <type>STRING</type>
         <default/>
         <description>Topic to publish color commands to (e.g. cmnd/tasmota_light/Color)</description>
+      </property>
+      <property>
+        <name>Color Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for color commands: {value} is replaced by the color value. Empty sends the value itself.</description>
       </property>
       <property>
         <name>Color Key</name>
@@ -496,6 +520,12 @@
         <type>STRING</type>
         <default/>
         <description>Topic to publish white channel commands to (e.g. cmnd/tasmota_light/White)</description>
+      </property>
+      <property>
+        <name>White Command Payload</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional payload template for white channel commands: {value} is replaced by the white value. Empty sends the value itself.</description>
       </property>
       <property>
         <name>White Key</name>
