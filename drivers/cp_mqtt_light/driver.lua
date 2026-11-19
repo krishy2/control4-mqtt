@@ -102,6 +102,7 @@ local CONFIG_PROPERTIES = {
   "Transition Command Topic",
   "Transition Key",
   "Transition Unit",
+  "Fade",
   "Shelly Topic Prefix",
   "Shelly Component",
 }
@@ -157,6 +158,7 @@ local function buildConfig()
     whiteMax = tonumber(prop("White Scale Max")) or 100,
     whiteColorTemp = tonumber(prop("White Color Temp")) or 4000,
     transitionUnit = prop("Transition Unit"),
+    fadeMode = prop("Fade"),
     shelly = { prefix = prop("Shelly Topic Prefix"), component = prop("Shelly Component") },
     topics = {
       power = feature("Power"),
@@ -242,6 +244,7 @@ local function updatePropertyVisibility()
     ["Transition Command Topic"] = topics,
     ["Transition Key"] = json,
     ["Transition Unit"] = generic and caps.transition,
+    ["Fade"] = generic and not caps.transition,
     ["Shelly Topic Prefix"] = shelly,
     ["Shelly Component"] = shelly,
   }

@@ -448,6 +448,24 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111907 - 2026-11-19
+
+### Fixed
+
+- MQTT Light: a fade started while another was running began from the last
+  confirmed level instead of where the light was, so dragging the slider made a
+  light jump back up (Dimmer 254) on every step. Fades now start where the
+  previous one got to, and the first step goes toward the target instead of
+  resending the start.
+
+### Added
+
+- MQTT Light: Fade (Stepped, Jump to Target) for lights without a transition
+  topic. Jump to Target sends one command with the final brightness; picking a
+  Zigbee light sets it. With it, reports of another level within 2 seconds of a
+  command are taken as late and not passed on, so Control4 (and scenes) see the
+  level the light ends on. Keypad holds still step, every 500 ms at most.
+
 ## v2026111906 - 2026-11-19
 
 ### Fixed

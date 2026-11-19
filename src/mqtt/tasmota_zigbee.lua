@@ -480,6 +480,8 @@ function Zigbee.lightProperties(dev, loadId, chosen)
     ["Payload On"] = "1",
     ["Payload Off"] = "0",
     ["Brightness Scale Max"] = "254",
+    -- Zigbee bulbs soften each change themselves; steps make them stutter.
+    ["Fade"] = "Jump to Target",
   }
   local function merge(t)
     for k, v in pairs(t) do

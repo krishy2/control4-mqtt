@@ -351,6 +351,135 @@ T.eq("the last step is the target", last(steps), "100")
 T.eq("the ramp ends with BRIGHTNESS_CHANGED", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 100)
 
 -------------------------------------------------------------------------------
+T.section("Slider drags: a new fade starts where the last one got to")
+-------------------------------------------------------------------------------
+-- From a log of a Zigbee spot: each new SET_BRIGHTNESS_TARGET started its fade
+-- by sending the last confirmed level (Dimmer 254, later 43), so the bulb
+-- jumped back up on every slider step.
+local zbTopic = "tele/zigbee/F274/SENSOR"
+local function zbLight(fade)
+  return newLight({
+    mode = MqttLight.MODE_TOPICS,
+    optimistic = "Auto",
+    stateOn = "1",
+    stateOff = "0",
+    payloadOn = "1",
+    payloadOff = "0",
+    brightnessMax = 254,
+    fadeMode = fade,
+    topics = {
+      power = {
+        stateTopic = zbTopic,
+        valuePath = "$.ZbReceived['0xF274'].Power",
+        commandTopic = "cmnd/zigbee/ZbSend",
+        commandTemplate = '{"Device":"spot5","Send":{"Power":{value}}}',
+      },
+      brightness = {
+        stateTopic = zbTopic,
+        valuePath = "$.ZbReceived['0xF274'].Dimmer",
+        commandTopic = "cmnd/zigbee/ZbSend",
+        commandTemplate = '{"Device":"spot5","Send":{"Dimmer":{value}}}',
+      },
+    },
+  })
+end
+local function dimmers()
+  local out = {}
+  for _, p in ipairs(published("cmnd/zigbee/ZbSend")) do
+    out[#out + 1] = tonumber(p:match('"Dimmer":(%d+)'))
+  end
+  return out
+end
+local function report(level254)
+  light:onMessage(zbTopic, string.format('{"ZbReceived":{"0xF274":{"Power":1,"Dimmer":%d}}}', level254))
+end
+
+reset()
+clock = 0
+light = zbLight(MqttLight.FADE_STEPPED)
+report(254)
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "85", RATE = "750" })
+ShimFireTimers() -- debounce
+T.eq("stepped: nothing is sent at the start of a fade", dimmers(), {})
+clock = 250
+ShimFireTimers()
+local firstSteps = dimmers()
+T.check("the first step goes down from 100%", #firstSteps == 1 and firstSteps[1] < 254, table.concat(firstSteps, ","))
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "60", RATE = "750" })
+ShimFireTimers() -- debounce; the second fade starts from the first one's step
+for _, c in ipairs({ 500, 750, 1000, 1250 }) do
+  clock = c
+  ShimFireTimers()
+end
+local all = dimmers()
+for i = 2, #all do
+  T.check("never back up while dimming down (" .. i .. ")", all[i] <= all[i - 1], table.concat(all, ","))
+end
+T.eq("ends on the target", last(all), 152)
+
+reset()
+clock = 0
+light = zbLight(MqttLight.FADE_JUMP)
+report(254)
+reset()
+for _, target in ipairs({ "97", "85", "78", "67", "48", "32", "21", "17" }) do
+  light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = target, RATE = "750" })
+  ShimFireTimers()
+end
+T.eq("jump to target: one command per slider step", dimmers(), { 246, 216, 198, 170, 122, 81, 53, 43 })
+T.eq("Control4 still sees the fade time", last(notifies("LIGHT_BRIGHTNESS_CHANGING")).RATE, 750)
+
+-- Late reports after the last command (the log: 254, then 183, then 43).
+clock = 1000
+ShimFireTimers() -- the fade time is over
+reset()
+report(254)
+report(183)
+T.eq("late reports of other levels are not passed on", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
+report(43)
+T.eq("the report of the target is", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 17)
+reset()
+report(40)
+T.eq("after it, every report counts", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 16)
+
+-- A light that never gets to the level: what it says counts once the time is up.
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "0" })
+ShimFireTimers()
+reset()
+report(120)
+T.eq("another level within the settle time is held back", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
+clock = 5000
+report(120)
+T.eq("later it is reported", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 47)
+
+-- Keypad holds still step (there is no end level), every 500 ms at most.
+reset()
+clock = 0
+light = zbLight(MqttLight.FADE_JUMP)
+report(25)
+light:loadSettings({ holdRateUp = 4000 })
+reset()
+local realSetTimer = SetTimer
+local stepDelays = {}
+SetTimer = function(name, delay, ...)
+  if tostring(name):find("RampStep", 1, true) then
+    stepDelays[#stepDelays + 1] = delay
+  end
+  return realSetTimer(name, delay, ...)
+end
+light:handleProxyCommand("BUTTON_ACTION", { BUTTON_ID = "0", ACTION = "1" })
+ShimFireTimers() -- hold delay -> ramp starts
+for c = 500, 2000, 500 do
+  clock = c
+  ShimFireTimers()
+end
+SetTimer = realSetTimer
+local held = dimmers()
+T.check("a hold steps up", #held >= 2 and held[#held] > held[1], table.concat(held, ","))
+T.check("no faster than every 500 ms", #stepDelays > 0 and stepDelays[1] >= 500, tostring(stepDelays[1]))
+
+-------------------------------------------------------------------------------
 T.section("Keypad buttons: hold to dim, release to stop, click to toggle")
 -------------------------------------------------------------------------------
 reset()

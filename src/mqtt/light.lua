@@ -25,6 +25,9 @@ local MqttLight = {}
 MqttLight.__index = MqttLight
 
 MqttLight.MODE_TOPICS = "Separate Topics"
+--- Fade: how fades are done when the device cannot fade by itself
+MqttLight.FADE_STEPPED = "Stepped"
+MqttLight.FADE_JUMP = "Jump to Target"
 MqttLight.MODE_JSON = "JSON"
 MqttLight.MODE_SHELLY = "Shelly (Gen2+)"
 
@@ -66,6 +69,11 @@ local DEBOUNCE_MS = 50
 local MIN_STEP_MS = 250
 -- Emulated ramps use at most this many steps.
 local MAX_STEPS = 40
+-- Keypad holds on a light whose fades jump to the target step no faster than this.
+local HOLD_STEP_MS = 500
+-- After a command, reports of another level are taken as late (sent before the
+-- light got there) for this long, plus the fade time.
+local SETTLE_MS = 2000
 -- xy distance below which two colors are considered the same.
 local XY_TOLERANCE = 0.002
 
@@ -217,6 +225,9 @@ end
 --- @return boolean changed Whether the capabilities changed
 function MqttLight:configure(cfg)
   self.cfg = cfg or {}
+  -- Expectations from the old settings do not hold for the new ones.
+  self.settle = nil
+  CancelTimer(self:_timer("Settle"))
   local old = self.caps
   self.caps = self:computeCapabilities()
   for k, v in pairs(self.caps) do
@@ -643,6 +654,16 @@ end
 function MqttLight:_syncFromDevice(force)
   if self.ramp ~= nil then
     return
+  end
+  local settle = self.settle
+  if settle ~= nil then
+    local level = self:deviceLevel()
+    if self.now() < settle.untilT and level ~= nil and round(level) ~= round(settle.level) then
+      -- A report from before the light got to the commanded level.
+      return
+    end
+    self.settle = nil
+    CancelTimer(self:_timer("Settle"))
   end
   self:_reportLevel(self:deviceLevel(), force)
   self:_reportColor(self:deviceColor(), force)
@@ -1423,6 +1444,34 @@ function MqttLight:_cancelRampTimers()
   CancelTimer(self:_timer("RampEnd"))
 end
 
+--- The level just commanded: reports of another level within the settle time
+--- are late ones and are not passed on. Only with state feedback, and with
+--- Fade: Jump to Target (lights such as Zigbee bulbs behind a gateway that
+--- polls them, whose reports lag the commands).
+--- @param level number 0-100
+--- @param rate number|nil ms the light takes to get there
+function MqttLight:_expect(level, rate)
+  if not self:jumpsFades() or self:isOptimistic() or not self:hasStateFeedback() then
+    return
+  end
+  local wait = math.max(0, tonumber(rate) or 0) + SETTLE_MS
+  local settle = { level = level, untilT = self.now() + wait }
+  self.settle = settle
+  SetTimer(self:_timer("Settle"), wait, function()
+    if self.settle ~= settle then
+      return
+    end
+    -- Settle time over: report what the light says now, if it differs.
+    self.settle = nil
+    self:_syncFromDevice(false)
+  end)
+end
+
+--- Whether emulated fades jump straight to the target.
+function MqttLight:jumpsFades()
+  return self.cfg.fadeMode == MqttLight.FADE_JUMP
+end
+
 --- Finish the running ramp and report where the light ended.
 function MqttLight:_finishRamp()
   local r = self.ramp
@@ -1437,6 +1486,7 @@ function MqttLight:_finishRamp()
       self:_reportColor(r.color, true)
     end
   else
+    self:_expect(r.target, 0)
     self:_syncFromDevice(true)
   end
 end
@@ -1445,9 +1495,19 @@ end
 --- @param target number 0-100
 --- @param rate number milliseconds
 --- @param color table|nil color to apply with this change
-function MqttLight:rampTo(target, rate, color)
+--- @param hold boolean|nil a keypad hold: always stepped, it has no end level
+function MqttLight:rampTo(target, rate, color, hold)
   target = Color.clamp(tonumber(target) or 0, 0, 100)
   rate = math.max(0, tonumber(rate) or 0)
+  -- Where the light is now: a running ramp's position, or the level last
+  -- commanded while its report is still on the way.
+  local prev = self.ramp
+  local prevLevel
+  if prev ~= nil then
+    prevLevel = (prev.native or prev.jump) and prev.target or (prev.lastSent or round(self:_rampLevel()))
+  elseif self.settle ~= nil then
+    prevLevel = self.settle.level
+  end
   self:_cancelRampTimers()
   self.ramp = nil
 
@@ -1459,7 +1519,7 @@ function MqttLight:rampTo(target, rate, color)
     target = 1
   end
 
-  local from = self.level or 0
+  local from = prevLevel or self.level or 0
   if target <= 0 then
     self.colorOverride = false
   elseif color ~= nil then
@@ -1487,6 +1547,7 @@ function MqttLight:rampTo(target, rate, color)
 
   if rate <= 0 or from == target then
     self:_execute({ power = powerOn, level = target, color = color })
+    self:_expect(target, 0)
     if self:isOptimistic() then
       self:_reportLevel(target, true)
       if color then
@@ -1500,9 +1561,14 @@ function MqttLight:rampTo(target, rate, color)
 
   self.ramp = { from = from, target = target, rate = rate, start = self.now(), color = color }
 
-  if self.caps.transition then
-    -- The device fades by itself
-    self.ramp.native = true
+  if self.caps.transition or (self:jumpsFades() and not hold) then
+    -- The device fades by itself, or (Fade: Jump to Target) goes straight
+    -- there with its own soft change; the proxy still sees the fade time.
+    if self.caps.transition then
+      self.ramp.native = true
+    else
+      self.ramp.jump = true
+    end
     self:_execute({ power = powerOn, level = target, color = color, rate = rate })
     SetTimer(self:_timer("RampEnd"), rate, function()
       self:_finishRamp()
@@ -1511,9 +1577,16 @@ function MqttLight:rampTo(target, rate, color)
   end
 
   -- Emulate the ramp with stepped level commands
-  local steps = math.max(1, math.min(MAX_STEPS, math.floor(rate / MIN_STEP_MS)))
+  local minStep = (hold and self:jumpsFades()) and HOLD_STEP_MS or MIN_STEP_MS
+  local steps = math.max(1, math.min(MAX_STEPS, math.floor(rate / minStep)))
   local interval = rate / steps
+  -- The first step goes toward the target: the light is already at the start.
+  -- Only a turn-on (power) or a color change is sent at once.
   local first = true
+  if powerOn == nil and color == nil then
+    first = false
+    self.ramp.lastSent = round(from)
+  end
   local function step()
     local r = self.ramp
     if r == nil then
@@ -1544,7 +1617,11 @@ function MqttLight:rampTo(target, rate, color)
       SetTimer(self:_timer("RampStep"), interval, step)
     end
   end
-  step()
+  if first then
+    step()
+  else
+    SetTimer(self:_timer("RampStep"), interval, step)
+  end
 end
 
 --- Stop a running ramp where it is.
@@ -1557,6 +1634,10 @@ function MqttLight:stopRamp()
   -- A fade toward on that is stopped at once must not stop at 0 (off).
   if r.target > 0 and lvl < 1 then
     lvl = 1
+  end
+  if r.jump then
+    -- The light went straight to the target: that is where it stops.
+    lvl = round(r.target)
   end
   self:_cancelRampTimers()
   self.ramp = nil
@@ -1657,7 +1738,7 @@ function MqttLight:_startHold(buttonId)
   if from == target then
     return
   end
-  self:rampTo(target, rate)
+  self:rampTo(target, rate, nil, true)
 end
 
 --- Handle BUTTON_ACTION from the proxy (keypad bindings).
@@ -1770,7 +1851,7 @@ function MqttLight:handleProxyCommand(command, params)
     -- The rate is for the whole range; scale it to the distance left.
     local from = self.level or 0
     local target = rampUp and 100 or 0
-    self:rampTo(target, math.max(1, round(rate * math.abs(target - from) / 100)))
+    self:rampTo(target, math.max(1, round(rate * math.abs(target - from) / 100)), nil, true)
   elseif command == "GROUP_STOP_RAMP" then
     self:stopRamp()
   elseif command == "JOIN_GROUP" or command == "LEAVE_GROUP" or command == "SET_GROUP_SYNC" then

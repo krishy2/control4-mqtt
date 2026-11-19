@@ -593,6 +593,16 @@
         </items>
         <description>Unit of the transition value. Tasmota Speed: 1-40 half-seconds (enable Fade on the device).</description>
       </property>
+      <property>
+        <name>Fade</name>
+        <type>LIST</type>
+        <default>Stepped</default>
+        <items>
+          <item>Stepped</item>
+          <item>Jump to Target</item>
+        </items>
+        <description>For a light without a transition topic. Stepped: fades are sent as brightness steps (at most every 250 ms). Jump to Target: one command with the final brightness, the light's own soft change does the rest (best for Zigbee). Keypad holds are always stepped.</description>
+      </property>
     </properties>
     <commands/>
   </config>

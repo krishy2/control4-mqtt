@@ -405,6 +405,21 @@ brightness for ramps and keypad holds.
 `Tasmota Speed` sends Tasmota's `Speed` value (1-40 half-seconds). Enable fading
 on the device once with `Fade 1`.
 
+##### Fade \[ **_Stepped_** | Jump to Target \]
+
+For a light without a transition topic. **Stepped** sends a fade as brightness
+steps, at most every 250 ms (40 at most). **Jump to Target** sends one command
+with the final brightness and leaves the softening to the light; Control4 still
+shows the fade time. Zigbee bulbs smooth every change themselves, so steps make
+them stutter: picking a Zigbee light sets Jump to Target.
+
+With Jump to Target, the driver also waits for the light to get there: for 2
+seconds (plus the fade time) after a command, reports of another level are taken
+as late ones, sent before the light arrived, and are not passed on to Control4.
+A report of the commanded level, or any report after that time, counts as usual.
+Keypad holds are always stepped (there is no end level until the button is
+released), every 500 ms at most.
+
 #### Button Links
 
 The LED colors of keypad buttons bound to the
