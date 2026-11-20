@@ -455,6 +455,21 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112102 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: a color temperature sent by Control4 (as xy) reached the bulb up
+  to about 20 K too warm: the xy-to-Kelvin conversion was McCamy's
+  approximation, so the "Relax" preset's 2240 K went out as 2224 K (450 instead
+  of 446 mireds) and the bulb reported 2220 K. The conversion is now exact for
+  colors on the white line (a Kelvin to xy and back is the same Kelvin), and
+  reads colors off it as before.
+- MQTT Light: a command or scene step setting 0% with a color now tells Control4
+  that color at once, ahead of the off (the bulb stays off and gets it at the
+  next On), and the bulb's old color reported while it is off does not undo it.
+  Scenes with lights at 0% and a color can show active.
+
 ## v2026112101 - 2026-11-21
 
 ### Fixed

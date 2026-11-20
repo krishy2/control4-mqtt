@@ -1539,4 +1539,73 @@ T.eq(
   false
 )
 
+-------------------------------------------------------------------------------
+T.section("Off with a color (a scene step at 0%)")
+-------------------------------------------------------------------------------
+reset()
+clock = 0
+light = newLight({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "No",
+  colorTempUnit = "Mireds",
+  colorTempMin = 2000,
+  colorTempMax = 6500,
+  topics = {
+    power = { stateTopic = "o/power", commandTopic = "o/power/set" },
+    brightness = { stateTopic = "o/dim", commandTopic = "o/dim/set" },
+    colorTemp = { stateTopic = "o/ct", commandTopic = "o/ct/set" },
+  },
+})
+light:onMessage("o/power", "ON")
+light:onMessage("o/dim", "60")
+light:onMessage("o/ct", "250")
+ShimFireTimers()
+reset()
+local ox, oy = Color.cctToXy(2240)
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(ox),
+  LIGHT_COLOR_TARGET_Y = tostring(oy),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "0" })
+ShimFireTimers()
+T.eq("the color is not sent to the bulb", #published("o/ct/set"), 0)
+local firstColor, offIdx, colorIdx
+for i, m in ipairs(sent) do
+  if m.command == "LIGHT_COLOR_CHANGED" and colorIdx == nil then
+    colorIdx, firstColor = i, m.params
+  end
+end
+T.eq("Control4 is told the color at once", {
+  firstColor and firstColor.LIGHT_COLOR_CURRENT_X,
+  firstColor and firstColor.LIGHT_COLOR_CURRENT_Y,
+}, { Color.roundTo(ox, 4), Color.roundTo(oy, 4) })
+light:onMessage("o/power", "OFF")
+light:onMessage("o/ct", "250") -- the bulb, off, still reports its old color
+local nowTold = last(notifies("LIGHT_COLOR_CHANGED"))
+T.eq(
+  "reports of the old color while off do not undo it",
+  nowTold and nowTold.LIGHT_COLOR_CURRENT_X,
+  Color.roundTo(ox, 4)
+)
+T.eq("off is reported", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 0)
+reset()
+light:handleProxyCommand("ON", {})
+ShimFireTimers()
+T.eq("the next On brings the color", published("o/ct/set"), { tostring(math.floor(1e6 / 2240 + 0.5)) })
+
+-------------------------------------------------------------------------------
+T.section("Kelvin to xy and back")
+-------------------------------------------------------------------------------
+-- Control4 sends colors as xy: a preset of 2240 K came back as 2224 K, 450
+-- mireds instead of 446, and the bulb went to 2220 K.
+for _, k in ipairs({ 1800, 2000, 2240, 2700, 3000, 4000, 5000, 6500, 10000 }) do
+  local x, y = Color.cctToXy(k)
+  local back = Color.xyToCct(x, y)
+  T.check(k .. " K comes back as " .. k .. " K", math.abs(back - k) < 0.5, string.format("%.2f", back))
+end
+local d65 = Color.xyToCct(0.3127, 0.329)
+T.check("a white off the line (D65) reads about 6500 K, as before", math.abs(d65 - 6504) < 5, tostring(d65))
+
 T.finish()

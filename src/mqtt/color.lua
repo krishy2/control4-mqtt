@@ -243,9 +243,29 @@ end
 --- @param x number
 --- @param y number
 --- @return number kelvin
-function Color.xyToCct(x, y)
+local function mccamy(x, y)
   local n = (x - 0.3320) / (0.1858 - y)
   return 449 * n ^ 3 + 3525 * n ^ 2 + 6823.3 * n + 5520.33
+end
+
+function Color.xyToCct(x, y)
+  -- McCamy's approximation is ~20 K off for colors on the white (Planckian)
+  -- line at the warm end: 2240 K converted to xy came back as 2224 K. Find the
+  -- Kelvin whose xy (Color.cctToXy) McCamy reads as it reads this color: exact
+  -- for colors on the line, McCamy's reading for colors off it.
+  local m = mccamy(x, y)
+  if m ~= m or m < 1667 or m > 25000 then
+    return m
+  end
+  local T = m
+  for _ = 1, 10 do
+    local step = m - mccamy(Color.cctToXy(T))
+    T = Color.clamp(T + step, 1667, 25000)
+    if math.abs(step) < 0.01 then
+      break
+    end
+  end
+  return T
 end
 
 --- Convert Kelvin to mireds.

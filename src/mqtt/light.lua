@@ -753,6 +753,11 @@ end
 --- asked for while it is close to it, so Control4 (and the scene agent, which
 --- compares exactly) sees the color it set; otherwise what the light reports.
 function MqttLight:_toldColor(reported)
+  if self.offColor ~= nil and (self.level or 0) <= 0 then
+    -- Off with a color waiting for the next On: that is the light's color.
+    local c = self.offColor
+    return { x = c.x, y = c.y, mode = c.mode }
+  end
   local asked = self.askedColor
   if asked ~= nil and MqttLight.nearColor(reported, asked) then
     return { x = asked.x, y = asked.y, mode = asked.mode }
@@ -1720,7 +1725,12 @@ function MqttLight:rampTo(target, rate, color, hold, presets)
     color, colorPreset = self:_autoColor(target, from <= 0)
   end
   if color ~= nil and target <= 0 then
+    -- Off with a color (a scene step at 0%): the bulb stays off and gets the
+    -- color at the next On, but Control4 is told it now, ahead of the off, so
+    -- the light shows the scene's color (the scene agent compares it).
     self.offColor, self.offColorPreset = color, colorPreset
+    self.colorPreset = colorPreset
+    self:_reportColor(color, true)
     color = nil
   end
   -- The presets behind this change, told with the level and color it reaches.

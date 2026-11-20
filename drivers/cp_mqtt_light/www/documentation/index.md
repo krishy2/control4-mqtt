@@ -690,6 +690,9 @@ same commands arriving and the light's reports (`ZbReceived`).
 - **Keypad holds** - press-and-hold ramps toward full or off and stops where you
   let go. A light that fades by itself fades toward full or off and gets the
   level it reached on release; otherwise the driver steps the brightness.
+- **Off with a color** - a command or scene step that sets 0% with a color
+  leaves the bulb off and gives it that color at the next On; Control4 is told
+  the color at once, so the light shows the scene's color while off.
 - **Colors close to the one asked for** - a light often lands slightly off the
   color it was given (a TS0502B asked for 2240 K reports 2220 K). While it is
   within 10 mireds (or 0.01 in xy for full color) of the color it was asked for,
