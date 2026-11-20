@@ -320,7 +320,26 @@ T.eq("color_mode decides CCT", last(notifies("LIGHT_COLOR_CHANGED")).LIGHT_COLOR
 
 reset()
 light:onMessage("z2m/bulb", '{"state":"ON","brightness":127}')
-T.eq("254 scale: 127 is 50%", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 50)
+T.eq(
+  "254 scale: 127 is 55% (0-15 is 0-15%, 16-254 is 16-100%)",
+  last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT,
+  55
+)
+
+-------------------------------------------------------------------------------
+T.section("The 0-254 scale: fine at the bottom")
+-------------------------------------------------------------------------------
+for _, pair in ipairs({ { 0, 0 }, { 1, 1 }, { 5, 5 }, { 15, 15 }, { 16, 16 }, { 50, 112 }, { 100, 254 } }) do
+  T.eq(pair[1] .. "% is " .. pair[2], math.floor(MqttLight.toZigbeeScale(pair[1]) + 0.5), pair[2])
+end
+for p = 0, 100 do
+  local v = math.floor(MqttLight.toZigbeeScale(p) + 0.5)
+  local back = math.floor(MqttLight.fromZigbeeScale(v) + 0.5)
+  if back ~= p then
+    T.eq(p .. "% comes back as " .. p .. "%", back, p)
+  end
+end
+T.check("every level comes back as itself (scenes compare exactly)", true)
 
 -------------------------------------------------------------------------------
 T.section("Ramps without device transitions are stepped")
@@ -416,7 +435,7 @@ local all = dimmers()
 for i = 2, #all do
   T.check("never back up while dimming down (" .. i .. ")", all[i] <= all[i - 1], table.concat(all, ","))
 end
-T.eq("ends on the target", last(all), 152)
+T.eq("ends on the target", last(all), 141)
 
 reset()
 clock = 0
@@ -427,21 +446,21 @@ for _, target in ipairs({ "97", "85", "78", "67", "48", "32", "21", "17" }) do
   light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = target, RATE = "750" })
   ShimFireTimers()
 end
-T.eq("jump to target: one command per slider step", dimmers(), { 246, 216, 198, 170, 122, 81, 53, 43 })
+T.eq("jump to target: one command per slider step", dimmers(), { 246, 212, 192, 161, 107, 61, 30, 19 })
 T.eq("Control4 still sees the fade time", last(notifies("LIGHT_BRIGHTNESS_CHANGING")).RATE, 750)
 
--- Late reports after the last command (the log: 254, then 183, then 43).
+-- Late reports after the last command (the log: 254, then 183, then the target).
 clock = 1000
 ShimFireTimers() -- the fade time is over
 reset()
 report(254)
 report(183)
 T.eq("late reports of other levels are not passed on", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
-report(43)
+report(19)
 T.eq("the report of the target is", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 17)
 reset()
-report(40)
-T.eq("after it, every report counts", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 16)
+report(15)
+T.eq("after it, every report counts", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 15)
 
 -- A light that never gets to the level: what it says counts once the time is up.
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "0" })
@@ -451,7 +470,7 @@ report(120)
 T.eq("another level within the settle time is held back", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
 clock = 5000
 report(120)
-T.eq("later it is reported", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 47)
+T.eq("later it is reported", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 53)
 
 -- Keypad holds still step (there is no end level), every 500 ms at most.
 reset()
@@ -1332,10 +1351,10 @@ zb:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50",
 ShimFireTimers()
 T.eq("on and brightness go in the templates", published("cmnd/zigbee/ZbSend"), {
   '{"Device":"spot1","Send":{"Power":1}}',
-  '{"Device":"spot1","Send":{"Dimmer":127}}',
+  '{"Device":"spot1","Send":{"Dimmer":112}}',
 })
 zb:onMessage(zbState, '{"ZbReceived":{"0xE53A":{"Device":"0xE53A","Name":"spot1","Power":1,"Dimmer":127,"CT":370}}}')
-T.eq("ZbReceived feedback reports the level", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 50)
+T.eq("ZbReceived feedback reports the level", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 55)
 local before = #notifies("LIGHT_BRIGHTNESS_CHANGED")
 zb:onMessage(zbState, '{"ZbReceived":{"0xE53A":{"Device":"0xE53A","Name":"spot1","LinkQuality":80}}}')
 T.eq("a message without light values changes nothing", #notifies("LIGHT_BRIGHTNESS_CHANGED"), before)
@@ -1401,7 +1420,7 @@ reset()
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "20", RATE = "750" })
 ShimFireTimers()
 T.eq("one command with level and fade time", published("cmnd/zigbee/ZbSend"), {
-  '{"Device":"spot1","Send":"0008!04/330800"}',
+  '{"Device":"spot1","Send":"0008!04/1B0800"}',
 })
 reset()
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "3000" })
@@ -1424,7 +1443,7 @@ ShimFireTimers()
 local zbSent = published("cmnd/zigbee/ZbSend")
 -- A two-channel Tuya bulb jumps when color temperature comes first or at the
 -- same moment: brightness goes first, color temperature 250 ms later.
-T.eq("brightness first, fading and turning on", zbSent, { '{"Device":"spot1","Send":"0008!04/7F0A00"}' })
+T.eq("brightness first, fading and turning on", zbSent, { '{"Device":"spot1","Send":"0008!04/700A00"}' })
 ShimFireTimers()
 zbSent = published("cmnd/zigbee/ZbSend")
 T.eq("then color temperature", #zbSent, 2)
@@ -1662,7 +1681,7 @@ light:handleProxyCommand("SET_COLOR_TARGET", {
 })
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
 light:flush()
-T.eq("from off: brightness first", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":"0008!04/260800"}' })
+T.eq("from off: brightness first", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":"0008!04/0F0800"}' })
 T.eq("color temperature after the 750 ms fade and 250 ms", delays[1], 1000)
 ShimFireTimers()
 light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":38,"CT":446}}}')

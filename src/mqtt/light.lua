@@ -808,6 +808,34 @@ function MqttLight:_parsePower(value)
   return parsed
 end
 
+-- A 0-254 brightness scale (Zigbee) is split: device values 0-16 are 0-16%
+-- one to one, for fine control at the bottom where these lights change most;
+-- 16-254 spread over 16-100%.
+local LOW_END = 16
+local ZIGBEE_MAX = 254
+
+--- A level (0-100%) as a device value on a 0-254 scale.
+--- @param level number
+--- @return number
+function MqttLight.toZigbeeScale(level)
+  level = Color.clamp(level, 0, 100)
+  if level <= LOW_END then
+    return level
+  end
+  return LOW_END + (level - LOW_END) * (ZIGBEE_MAX - LOW_END) / (100 - LOW_END)
+end
+
+--- A device value on a 0-254 scale as a level (0-100%).
+--- @param value number
+--- @return number
+function MqttLight.fromZigbeeScale(value)
+  value = Color.clamp(value, 0, ZIGBEE_MAX)
+  if value <= LOW_END then
+    return value
+  end
+  return LOW_END + (value - LOW_END) * (100 - LOW_END) / (ZIGBEE_MAX - LOW_END)
+end
+
 --- Parse a brightness value into 0-100.
 function MqttLight:_parseBrightness(value)
   local n = tonumber(value)
@@ -817,6 +845,9 @@ function MqttLight:_parseBrightness(value)
   local max = tonumber(self.cfg.brightnessMax) or 100
   if max <= 0 then
     max = 100
+  end
+  if max == ZIGBEE_MAX then
+    return MqttLight.fromZigbeeScale(n)
   end
   return Color.clamp(n / max * 100, 0, 100)
 end
@@ -1265,7 +1296,12 @@ function MqttLight:_brightnessValue(level)
   if max <= 0 then
     max = 100
   end
-  local v = round(Color.clamp(level, 0, 100) * max / 100)
+  local v
+  if max == ZIGBEE_MAX then
+    v = round(MqttLight.toZigbeeScale(level))
+  else
+    v = round(Color.clamp(level, 0, 100) * max / 100)
+  end
   if level > 0 and v < 1 then
     v = 1
   end
