@@ -455,6 +455,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112101 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: Advanced Lighting Scenes with a color never showed active. The
+  light reported the color it landed on, slightly off the scene's (a TS0502B
+  asked for the "Relax" preset's 2240 K reports 2220 K), and the scene agent
+  compares exactly. While the light is within 10 mireds (or 0.01 in xy for full
+  color) of the color it was asked for, Control4 is now told that color; a color
+  set by something else is told as reported.
+
 ## v2026112100 - 2026-11-21
 
 ### Changed

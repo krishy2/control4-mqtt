@@ -1465,4 +1465,78 @@ T.eq("no template sends the value itself", MqttLight.commandPayload("", 50), "50
 T.eq("nil template sends the value itself", MqttLight.commandPayload(nil, "ON"), "ON")
 T.eq("a % in the value is kept", MqttLight.commandPayload("x={value}", "5%"), "x=5%")
 
+-------------------------------------------------------------------------------
+T.section("The color it was asked for, when the light lands close to it")
+-------------------------------------------------------------------------------
+-- A TS0502B asked for the "Relax" preset (2240 K) reports 2220 K; the scene
+-- agent compares exactly, so the scene never showed active.
+reset()
+clock = 0
+light = newLight({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "No",
+  colorTempUnit = "Mireds",
+  colorTempMin = 2000,
+  colorTempMax = 6500,
+  topics = {
+    power = { stateTopic = "l/power", commandTopic = "l/power/set" },
+    brightness = { stateTopic = "l/dim", commandTopic = "l/dim/set" },
+    colorTemp = { stateTopic = "l/ct", commandTopic = "l/ct/set" },
+  },
+})
+light:onMessage("l/power", "ON")
+light:onMessage("l/dim", "50")
+light:onMessage("l/ct", "250")
+ShimFireTimers()
+local rx, ry = Color.cctToXy(2240)
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(rx),
+  LIGHT_COLOR_TARGET_Y = tostring(ry),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+ShimFireTimers()
+reset()
+light:onMessage("l/ct", tostring(math.floor(1e6 / 2220 + 0.5))) -- 450 mireds
+local told = last(notifies("LIGHT_COLOR_CHANGED"))
+T.eq("2220 K reported for 2240 K asked: Control4 is told 2240 K", {
+  told and told.LIGHT_COLOR_CURRENT_X,
+  told and told.LIGHT_COLOR_CURRENT_Y,
+}, { Color.roundTo(rx, 4), Color.roundTo(ry, 4) })
+clock = 60000
+reset()
+light:onMessage("l/ct", "250") -- 4000 K, set elsewhere
+local kx, ky = Color.cctToXy(4000)
+told = last(notifies("LIGHT_COLOR_CHANGED"))
+T.eq("a color set elsewhere is told as it is", {
+  told and told.LIGHT_COLOR_CURRENT_X,
+  told and told.LIGHT_COLOR_CURRENT_Y,
+}, { Color.roundTo(kx, 4), Color.roundTo(ky, 4) })
+reset()
+light:onMessage("l/ct", "450")
+told = last(notifies("LIGHT_COLOR_CHANGED"))
+T.check(
+  "and later reports are no longer moved to the old asked color",
+  told ~= nil and told.LIGHT_COLOR_CURRENT_X ~= Color.roundTo(rx, 4),
+  tostring(told and told.LIGHT_COLOR_CURRENT_X)
+)
+T.eq(
+  "near: 4 mireds apart",
+  MqttLight.nearColor({ x = rx, y = ry, mode = 1 }, {
+    x = select(1, Color.cctToXy(2220)),
+    y = select(2, Color.cctToXy(2220)),
+    mode = 1,
+  }),
+  true
+)
+T.eq(
+  "not near: 2240 K and 2700 K",
+  MqttLight.nearColor({ x = rx, y = ry, mode = 1 }, {
+    x = select(1, Color.cctToXy(2700)),
+    y = select(2, Color.cctToXy(2700)),
+    mode = 1,
+  }),
+  false
+)
+
 T.finish()

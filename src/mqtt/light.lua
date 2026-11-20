@@ -84,6 +84,11 @@ MqttLight.PREVIOUS_PRESET_ID = 10
 MqttLight.PRESET_ORIGIN_DEVICE = 1
 -- xy distance below which two colors are considered the same.
 local XY_TOLERANCE = 0.002
+-- How far a light may land from the color it was asked for and still count as
+-- that color (a TS0502B asked for 2240 K reports 2220 K): color temperature in
+-- mireds, full color in xy.
+local ASKED_MIREDS_TOLERANCE = 10
+local ASKED_XY_TOLERANCE = 0.01
 
 local DEFAULT_SETTINGS = {
   onLevel = 100,
@@ -727,6 +732,39 @@ function MqttLight:deviceColor()
 end
 
 --- Report the device's state to the proxy (unless a ramp is in progress).
+--- Whether a color the light reports is the one it was asked for, within what
+--- the light can actually hit.
+--- @return boolean
+function MqttLight.nearColor(reported, asked)
+  if reported == nil or asked == nil or reported.mode ~= asked.mode then
+    return false
+  end
+  if asked.mode == MqttLight.COLOR_MODE_CCT then
+    local k1, k2 = Color.xyToCct(reported.x, reported.y), Color.xyToCct(asked.x, asked.y)
+    if k1 == nil or k2 == nil or k1 <= 0 or k2 <= 0 then
+      return false
+    end
+    return math.abs(1e6 / k1 - 1e6 / k2) <= ASKED_MIREDS_TOLERANCE
+  end
+  return math.abs(reported.x - asked.x) <= ASKED_XY_TOLERANCE and math.abs(reported.y - asked.y) <= ASKED_XY_TOLERANCE
+end
+
+--- The color to tell Control4 for what the light reports: the color it was
+--- asked for while it is close to it, so Control4 (and the scene agent, which
+--- compares exactly) sees the color it set; otherwise what the light reports.
+function MqttLight:_toldColor(reported)
+  local asked = self.askedColor
+  if asked ~= nil and MqttLight.nearColor(reported, asked) then
+    return { x = asked.x, y = asked.y, mode = asked.mode }
+  end
+  if reported ~= nil and asked ~= nil and self.now() >= (asked.holdUntil or 0) then
+    -- Changed by something else (not a report from on the way there): the
+    -- asked color no longer applies.
+    self.askedColor = nil
+  end
+  return reported
+end
+
 function MqttLight:_syncFromDevice(force)
   if self.ramp ~= nil then
     return
@@ -742,7 +780,7 @@ function MqttLight:_syncFromDevice(force)
     CancelTimer(self:_timer("Settle"))
   end
   self:_reportLevel(self:deviceLevel(), force)
-  self:_reportColor(self:deviceColor(), force)
+  self:_reportColor(self:_toldColor(self:deviceColor()), force)
   self:_stateChanged()
 end
 
@@ -1689,6 +1727,7 @@ function MqttLight:rampTo(target, rate, color, hold, presets)
   self.levelPreset = target > 0 and presets.level or nil
   if color ~= nil then
     self.colorPreset = colorPreset
+    self.askedColor = { x = color.x, y = color.y, mode = color.mode, holdUntil = self.now() + rate + SETTLE_MS }
   end
 
   local powerOn = (target > 0 and from <= 0) or nil
@@ -1858,6 +1897,7 @@ function MqttLight:setColor(color, rate, preset)
   rate = math.max(0, tonumber(rate) or 0)
   local on = (self.level or 0) > 0 or (self.ramp ~= nil and self.ramp.target > 0)
   self.colorPreset = preset
+  self.askedColor = { x = color.x, y = color.y, mode = color.mode, holdUntil = self.now() + rate + SETTLE_MS }
   if not on then
     -- Best practice: don't turn the light on; use this color at the next turn on.
     self.offColor, self.offColorPreset = color, preset

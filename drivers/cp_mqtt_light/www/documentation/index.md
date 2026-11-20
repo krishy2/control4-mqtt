@@ -690,6 +690,11 @@ same commands arriving and the light's reports (`ZbReceived`).
 - **Keypad holds** - press-and-hold ramps toward full or off and stops where you
   let go. A light that fades by itself fades toward full or off and gets the
   level it reached on release; otherwise the driver steps the brightness.
+- **Colors close to the one asked for** - a light often lands slightly off the
+  color it was given (a TS0502B asked for 2240 K reports 2220 K). While it is
+  within 10 mireds (or 0.01 in xy for full color) of the color it was asked for,
+  Control4 is told that color, so scenes with colors show as active. A color set
+  by something else is told as the light reports it.
 - **Advanced Lighting Scenes** - Control4 sends each scene to the light, and the
   light runs its steps itself: each step waits its **Delay**, then sets its
   brightness and/or color over its fade time, then the next step follows. A
