@@ -508,27 +508,6 @@ function OnDriverInit()
   values:restoreValues()
 end
 
---- Read the light proxy's setup: Default On / Previous On, Dim-To-Warm and
---- Daylight on modes, presets and default fade times.
-local function readProxySetup()
-  local proxy = C4.GetProxyDevices and C4:GetProxyDevices() or nil
-  if type(proxy) == "table" then
-    proxy = next(proxy)
-  end
-  proxy = tonumber(tostring(proxy or ""):match("%d+"))
-  if proxy == nil then
-    return
-  end
-  local ok, xml = pcall(SendUIRequest, proxy, "GET_SETUP", {})
-  if not ok or type(xml) ~= "string" or xml == "" then
-    log:debug("The light proxy's setup could not be read: %s", ok and "no answer" or tostring(xml))
-    return
-  end
-  if light:readSetup(xml) then
-    log:debug("Read the light proxy's on modes and presets")
-  end
-end
-
 function OnDriverLateInit()
   log:trace("OnDriverLateInit()")
   if not CheckMinimumVersion("Driver Status") then
@@ -566,9 +545,6 @@ function OnDriverLateInit()
 
   -- Request current broker status
   SendToProxy(MQTT_BINDING, "GET_STATUS", {}, "NOTIFY")
-
-  -- The proxy's on modes, presets and default rates (sent only when changed)
-  SetTimer("ReadProxySetup", 3 * ONE_SECOND, readProxySetup)
 end
 
 -----------------------------------------------------------------------

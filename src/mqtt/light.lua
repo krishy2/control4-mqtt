@@ -17,7 +17,6 @@
 --- messages (onMessage); it sends PUBLISH requests to the broker binding and
 --- light_v2 notifies to the proxy binding.
 
-require("lib.utils")
 local log = require("lib.logging")
 local stateParser = require("mqtt.state_parser")
 local Color = require("mqtt.color")
@@ -79,9 +78,6 @@ local COLOR_AFTER_LEVEL_MS = 250
 -- After a command, reports of another level are taken as late (sent before the
 -- light got there) for this long, plus the fade time.
 local SETTLE_MS = 2000
--- The proxy's Previous On presets (brightness and color): id 10, a device preset (origin 1).
-MqttLight.PREVIOUS_PRESET_ID = 10
-MqttLight.PRESET_ORIGIN_DEVICE = 1
 -- xy distance below which two colors are considered the same.
 local XY_TOLERANCE = 0.002
 
@@ -226,15 +222,6 @@ function MqttLight:resetState()
   self.press = nil
   self.pending = nil
   self.lastMode = nil
-  -- The preset that set the current level / color, told to the proxy so an
-  -- agent (Daylight) knows the light still follows it.
-  self.levelPreset = nil -- brightness preset id
-  self.colorPreset = nil -- { id, origin }
-  self.offColorPreset = nil -- the preset of a color chosen while off
-  self.lastOnLevel = nil
-  -- Advanced Lighting Scenes: the scene whose steps are running
-  self.sceneRun = nil
-  self.sceneRamping = false
 end
 
 --- Apply a new configuration and recompute capabilities.
@@ -431,9 +418,10 @@ function MqttLight:describeCapabilities()
   return table.concat(parts, ", ")
 end
 
---- Fade time range in ms (up to 65.5 s); driver.xml declares the same.
+--- Fade time range in ms. Composer reads these as 16-bit numbers, so the
+--- maximum must stay at 32767 (32.7 s); driver.xml declares the same.
 MqttLight.RATE_MIN = 0
-MqttLight.RATE_MAX = 65535
+MqttLight.RATE_MAX = 32767
 --- The proxy's default fade time (ms), declared so Composer's rate controls
 --- always have a value inside their range.
 MqttLight.RATE_DEFAULT = 750
@@ -445,8 +433,10 @@ function MqttLight.rateCapabilities()
   return {
     brightness_rate_min = tostring(MqttLight.RATE_MIN),
     brightness_rate_max = tostring(MqttLight.RATE_MAX),
+    brightness_rate_default = tostring(MqttLight.RATE_DEFAULT),
     color_rate_min = tostring(MqttLight.RATE_MIN),
     color_rate_max = tostring(MqttLight.RATE_MAX),
+    color_rate_default = tostring(MqttLight.RATE_DEFAULT),
   }
 end
 
@@ -455,23 +445,14 @@ end
 --- @return table
 function MqttLight:dynamicCapabilities()
   local c = self.caps
-  -- The same set every time, so the proxy and Composer never keep a stale one.
   local params = {
     dimmer = boolStr(c.dimmer),
     set_level = boolStr(c.dimmer),
-    supports_target = boolStr(c.dimmer),
-    ramp_level = boolStr(c.dimmer),
+    supports_target = "true",
     supports_brightness_stop = boolStr(c.dimmer),
-    has_fixed_ramp_rate = "false",
-    fixed_ramp_rate = "0",
     supports_color = boolStr(c.color),
     supports_color_correlated_temperature = boolStr(c.cct),
-    -- The proxy passes a brightness stop on only to a light that has a color stop.
-    supports_color_stop = boolStr(c.dimmer or c.color or c.cct),
-    color_rate_behavior = "1",
-    has_extras = "false",
-    cold_start = "false",
-    color_trace_tolerance = "2",
+    color_rate_behavior = c.transition and "1" or "0",
   }
   -- Always sent: Composer reads missing ranges as 0-0 and then refuses the
   -- proxy's default fade time (0.75 s), even on a light without color.
@@ -601,26 +582,8 @@ function MqttLight:_reportLevel(level, force)
   if not force and self.level == level then
     return
   end
-  local was = self.level
   self.level = level
-  if level > 0 then
-    self.lastOnLevel = level
-  elseif was ~= nil and was > 0 then
-    -- The on cycle ends: what a Previous on mode restores next time, and the
-    -- presets that set this cycle's level and color no longer apply.
-    local s = self.settings
-    s.previousLevel = self.lastOnLevel or s.previousLevel
-    if self.color ~= nil then
-      s.previousColor = { x = self.color.x, y = self.color.y, mode = self.color.mode }
-    end
-    self.levelPreset = nil
-    self.colorPreset = nil
-    self:_saveSettings()
-  end
-  self:_notify("LIGHT_BRIGHTNESS_CHANGED", {
-    LIGHT_BRIGHTNESS_CURRENT = level,
-    LIGHT_BRIGHTNESS_CURRENT_PRESET_ID = level > 0 and self.levelPreset or nil,
-  })
+  self:_notify("LIGHT_BRIGHTNESS_CHANGED", { LIGHT_BRIGHTNESS_CURRENT = level })
   self:_stateChanged()
 end
 
@@ -633,13 +596,10 @@ function MqttLight:_reportColor(color, force)
     return
   end
   self.color = { x = color.x, y = color.y, mode = color.mode }
-  local preset = self.colorPreset
   self:_notify("LIGHT_COLOR_CHANGED", {
     LIGHT_COLOR_CURRENT_X = Color.roundTo(color.x, 4),
     LIGHT_COLOR_CURRENT_Y = Color.roundTo(color.y, 4),
     LIGHT_COLOR_CURRENT_COLOR_MODE = color.mode,
-    LIGHT_COLOR_CURRENT_PRESET_ID = preset and preset.id or nil,
-    LIGHT_COLOR_CURRENT_PRESET_ORIGIN = preset and preset.origin or nil,
   })
   self:_stateChanged()
 end
@@ -1495,37 +1455,18 @@ function MqttLight:_autoColor(targetLevel, turningOn)
   end
   if turningOn and self.offColor ~= nil then
     local c = self.offColor
-    local preset = self.offColorPreset
-    self.offColor, self.offColorPreset = nil, nil
-    return c, preset
+    self.offColor = nil
+    return c
   end
   if self.colorOverride then
     return nil
   end
-  local s = self.settings
-  local on, dim, onPreset = s.onColor, s.dimColor, nil
-  local mode = s.colorOnMode
-  if mode ~= nil and mode.on ~= nil then
-    local kind = MqttLight.colorOnModeKind(mode)
-    if kind == "previous" then
-      -- Color On Mode Previous: the color the light had when it last went off.
-      local prev = s.previousColor
-      if turningOn and prev ~= nil and prev.x ~= nil then
-        return { x = prev.x, y = prev.y, mode = prev.mode }, { id = mode.on.id, origin = mode.on.origin }
-      end
-      return nil
-    end
-    if mode.on.x == nil then
-      return nil
-    end
-    on = mode.on
-    onPreset = mode.on.id and { id = mode.on.id, origin = mode.on.origin } or nil
-    dim = kind == "fade" and mode.fade and mode.fade.x and mode.fade or nil
-  end
+  local on = self.settings.onColor
   if on == nil then
     return nil
   end
-  local onLevel = tonumber(s.onLevel) or 100
+  local dim = self.settings.dimColor
+  local onLevel = tonumber(self.settings.onLevel) or 100
   if not turningOn and (dim == nil or sameXy(dim, on)) then
     return nil
   end
@@ -1533,7 +1474,7 @@ function MqttLight:_autoColor(targetLevel, turningOn)
     if not turningOn and sameXy(self.color, on) then
       return nil
     end
-    return { x = on.x, y = on.y, mode = on.mode }, onPreset
+    return { x = on.x, y = on.y, mode = on.mode }
   end
   -- Warm dim: interpolate between Dim (1%) and On (Default On Brightness)
   local f = Color.clamp((targetLevel - 1) / (onLevel - 1), 0, 1)
@@ -1543,37 +1484,6 @@ function MqttLight:_autoColor(targetLevel, turningOn)
     return { x = x, y = y, mode = MqttLight.COLOR_MODE_CCT }
   end
   return { x = dim.x + (on.x - dim.x) * f, y = dim.y + (on.y - dim.y) * f, mode = MqttLight.COLOR_MODE_FULL }
-end
-
---- Which color on mode the proxy set: "fade" (Dim-To-Warm, a fade preset with
---- an origin), "previous" (the Previous On preset, id 10 of the device's), or
---- "preset" (one fixed color, for example the Daylight Agent's).
---- @param mode table { on = preset, fade = preset|nil }
---- @return string
-function MqttLight.colorOnModeKind(mode)
-  local fade, on = mode.fade, mode.on or {}
-  if fade ~= nil and (tonumber(fade.origin) or 0) > 0 then
-    return "fade"
-  end
-  if on.id == MqttLight.PREVIOUS_PRESET_ID and on.origin == MqttLight.PRESET_ORIGIN_DEVICE then
-    return "previous"
-  end
-  return "preset"
-end
-
---- The level an On goes to: the brightness on mode's preset, or with the
---- Previous On preset the level the light had when it last went off.
---- @return number level, number|nil presetId
-function MqttLight:_onLevel()
-  local s = self.settings
-  local id = tonumber(s.brightnessOnPreset)
-  if id == MqttLight.PREVIOUS_PRESET_ID then
-    local prev = tonumber(s.previousLevel)
-    if prev ~= nil and prev > 0 then
-      return prev, id
-    end
-  end
-  return tonumber(s.onLevel) or 100, id
 end
 
 --- Interpolated level of the running ramp.
@@ -1646,11 +1556,9 @@ end
 --- @param rate number milliseconds
 --- @param color table|nil color to apply with this change
 --- @param hold boolean|nil a keypad hold: always stepped, it has no end level
-function MqttLight:rampTo(target, rate, color, hold, presets)
+function MqttLight:rampTo(target, rate, color, hold)
   target = Color.clamp(tonumber(target) or 0, 0, 100)
   rate = math.max(0, tonumber(rate) or 0)
-  presets = presets or {}
-  local colorPreset = presets.color
   -- Where the light is now: a running ramp's position, or the level last
   -- commanded while its report is still on the way.
   local prev = self.ramp
@@ -1677,16 +1585,11 @@ function MqttLight:rampTo(target, rate, color, hold, presets)
   elseif color ~= nil then
     self.colorOverride = true
   else
-    color, colorPreset = self:_autoColor(target, from <= 0)
+    color = self:_autoColor(target, from <= 0)
   end
   if color ~= nil and target <= 0 then
-    self.offColor, self.offColorPreset = color, colorPreset
+    self.offColor = color
     color = nil
-  end
-  -- The presets behind this change, told with the level and color it reaches.
-  self.levelPreset = target > 0 and presets.level or nil
-  if color ~= nil then
-    self.colorPreset = colorPreset
   end
 
   local powerOn = (target > 0 and from <= 0) or nil
@@ -1809,10 +1712,7 @@ end
 
 function MqttLight:_notifyColorChanging(color, rate)
   local cur = self.color or color
-  local preset = self.colorPreset
   self:_notify("LIGHT_COLOR_CHANGING", {
-    LIGHT_COLOR_TARGET_PRESET_ID = preset and preset.id or nil,
-    LIGHT_COLOR_TARGET_PRESET_ORIGIN = preset and preset.origin or nil,
     LIGHT_COLOR_TARGET_X = Color.roundTo(color.x, 4),
     LIGHT_COLOR_TARGET_Y = Color.roundTo(color.y, 4),
     LIGHT_COLOR_TARGET_COLOR_MODE = color.mode,
@@ -1843,22 +1743,21 @@ function MqttLight:flush()
     return
   end
   if p.level ~= nil then
-    self:rampTo(p.level, p.rate, p.color, nil, { level = p.levelPreset, color = p.colorPreset })
+    self:rampTo(p.level, p.rate, p.color)
     return
   end
   if p.color ~= nil then
-    self:setColor(p.color, p.colorRate, p.colorPreset)
+    self:setColor(p.color, p.colorRate)
   end
 end
 
 --- Change color without changing brightness.
-function MqttLight:setColor(color, rate, preset)
+function MqttLight:setColor(color, rate)
   rate = math.max(0, tonumber(rate) or 0)
   local on = (self.level or 0) > 0 or (self.ramp ~= nil and self.ramp.target > 0)
-  self.colorPreset = preset
   if not on then
     -- Best practice: don't turn the light on; use this color at the next turn on.
-    self.offColor, self.offColorPreset = color, preset
+    self.offColor = color
     self:_reportColor(color, true)
     return
   end
@@ -1881,8 +1780,7 @@ function MqttLight:_click(buttonId)
   local s = self.settings
   local on = (self.level or 0) > 0
   if buttonId == BUTTON_TOP or (buttonId == BUTTON_TOGGLE and not on) then
-    local level, preset = self:_onLevel()
-    self:rampTo(level, s.clickRateUp, nil, nil, { level = preset })
+    self:rampTo(tonumber(s.onLevel) or 100, s.clickRateUp)
   else
     self:rampTo(0, s.clickRateDown)
   end
@@ -1962,48 +1860,22 @@ function MqttLight:handleProxyCommand(command, params)
   params = params or {}
   local s = self.settings
 
-  if MqttLight.ENDS_SCENE[command] then
-    -- Another hand moves the light: a running scene's later steps are dropped.
-    self:_stopScene()
-    self.sceneRamping = false
-  end
-
-  if self:_handleSceneCommand(command, params) then
-    return true
-  end
-  if self:_handlePresetCommand(command, params) then
-    return true
-  end
-
   if command == "SET_BRIGHTNESS_TARGET" then
     local target = num(params, "LIGHT_BRIGHTNESS_TARGET", "LEVEL")
     if target == nil then
       return true
     end
     local rate = num(params, "RATE", "LIGHT_BRIGHTNESS_TARGET_RATE", "TIME") or s.brightnessRateDefault
-    self:_queue({ level = target, rate = rate, levelPreset = num(params, "LIGHT_BRIGHTNESS_TARGET_PRESET_ID") })
+    self:_queue({ level = target, rate = rate })
   elseif command == "SET_COLOR_TARGET" then
     local x = num(params, "LIGHT_COLOR_TARGET_X")
     local y = num(params, "LIGHT_COLOR_TARGET_Y")
-    local mode = num(params, "LIGHT_COLOR_TARGET_MODE", "LIGHT_COLOR_TARGET_COLOR_MODE") or 0
-    local presetId = num(params, "LIGHT_COLOR_TARGET_PRESET_ID")
-    local origin = num(params, "LIGHT_COLOR_TARGET_PRESET_ORIGIN") or MqttLight.PRESET_ORIGIN_DEVICE
-    if (x == nil or y == nil) and presetId ~= nil then
-      -- A preset named by its id alone: its color as the proxy last sent it.
-      local known = self:_colorPresetById(presetId, origin)
-      if known ~= nil then
-        x, y, mode = known.x, known.y, known.mode or mode
-      end
-    end
     if x == nil or y == nil then
       return true
     end
-    local rate = num(params, "LIGHT_COLOR_TARGET_RATE", "LIGHT_COLOR_TARGET_COLOR_RATE", "RATE") or s.colorRateDefault
-    self:_queue({
-      color = { x = x, y = y, mode = mode },
-      colorRate = rate,
-      colorPreset = presetId and { id = presetId, origin = origin } or nil,
-    })
+    local mode = num(params, "LIGHT_COLOR_TARGET_MODE", "LIGHT_COLOR_TARGET_COLOR_MODE") or 0
+    local rate = num(params, "LIGHT_COLOR_TARGET_RATE", "RATE") or s.colorRateDefault
+    self:_queue({ color = { x = x, y = y, mode = mode }, colorRate = rate })
   elseif command == "SET_BRIGHTNESS_STOP" or command == "STOP_RAMP" then
     self:flush()
     self:stopRamp()
@@ -2011,16 +1883,14 @@ function MqttLight:handleProxyCommand(command, params)
     -- Color changes are not tracked step by step; nothing to stop.
     return true
   elseif command == "ON" or command == "DYNAMIC_ON" then
-    local level, preset = self:_onLevel()
-    self:rampTo(level, s.brightnessRateDefault, nil, nil, { level = preset })
+    self:rampTo(tonumber(s.onLevel) or 100, s.brightnessRateDefault)
   elseif command == "OFF" or command == "DYNAMIC_OFF" then
     self:rampTo(0, s.brightnessRateDefault)
   elseif command == "TOGGLE" then
     if (self.level or 0) > 0 then
       self:rampTo(0, s.brightnessRateDefault)
     else
-      local level, preset = self:_onLevel()
-      self:rampTo(level, s.brightnessRateDefault, nil, nil, { level = preset })
+      self:rampTo(tonumber(s.onLevel) or 100, s.brightnessRateDefault)
     end
   elseif command == "SET_LEVEL" or command == "RAMP_TO_LEVEL" then
     local level = num(params, "LEVEL")
@@ -2047,8 +1917,6 @@ function MqttLight:handleProxyCommand(command, params)
   elseif command == "JOIN_GROUP" or command == "LEAVE_GROUP" or command == "SET_GROUP_SYNC" then
     log:debug("%s group %s (keep sync %s)", command, tostring(params.GROUP_ID), tostring(params.KEEP_SYNC))
   elseif command == "BUTTON_ACTION" then
-    self:_stopScene()
-    self.sceneRamping = false
     self:buttonAction(params.BUTTON_ID, params.ACTION)
   elseif command == "SET_CLICK_RATE_UP" or command == "SET_CLICK_RATE_DOWN" then
     local rate = num(params, "RATE")
@@ -2073,461 +1941,37 @@ function MqttLight:handleProxyCommand(command, params)
       self:_notify("PRESET_LEVEL", { BRIGHTNESS = level })
       self:_saveSettings()
     end
+  elseif command == "UPDATE_BRIGHTNESS_PRESET" then
+    local id = num(params, "PRESET_ID", "ID")
+    local level = num(params, "LEVEL")
+    if level ~= nil and (id == 1 or params.NAME == "On") and params.COMMAND ~= "REMOVED" then
+      s.onLevel = level
+      self:_saveSettings()
+    end
+  elseif command == "UPDATE_BRIGHTNESS_ON_MODE" then
+    local level = num(params, "BRIGHTNESS_PRESET_LEVEL")
+    if level ~= nil and level > 0 then
+      s.onLevel = level
+      self:_saveSettings()
+    end
   elseif command == "UPDATE_BRIGHTNESS_RATE_DEFAULT" or command == "SET_BRIGHTNESS_RATE_DEFAULT" then
     s.brightnessRateDefault = num(params, "RATE") or 0
     self:_saveSettings()
   elseif command == "UPDATE_COLOR_RATE_DEFAULT" or command == "SET_COLOR_RATE_DEFAULT" then
     s.colorRateDefault = num(params, "RATE") or 0
     self:_saveSettings()
-  else
-    return false
-  end
-  return true
-end
-
--------------------------------------------------------------------------------
--- Presets and on modes (Default On, Previous On, Dim-To-Warm, Daylight)
--------------------------------------------------------------------------------
-
---- Commands a scene's later steps give way to.
-MqttLight.ENDS_SCENE = {
-  SET_BRIGHTNESS_TARGET = true,
-  SET_BRIGHTNESS_STOP = true,
-  STOP_RAMP = true,
-  ON = true,
-  OFF = true,
-  TOGGLE = true,
-  DYNAMIC_ON = true,
-  DYNAMIC_OFF = true,
-  SET_LEVEL = true,
-  RAMP_TO_LEVEL = true,
-  GROUP_SET_LEVEL = true,
-  GROUP_RAMP_TO_LEVEL = true,
-  GROUP_START_RAMP = true,
-  GROUP_STOP_RAMP = true,
-}
-
-local function presetKey(id, origin)
-  return string.format("%d:%d", tonumber(origin) or MqttLight.PRESET_ORIGIN_DEVICE, tonumber(id) or 0)
-end
-
---- A color preset the proxy told about.
---- @return table|nil { x, y, mode }
-function MqttLight:_colorPresetById(id, origin)
-  local known = (self.settings.colorPresets or {})[presetKey(id, origin)]
-  if known ~= nil and known.x ~= nil and known.y ~= nil then
-    return known
-  end
-  return nil
-end
-
---- A preset as UPDATE_COLOR_ON_MODE describes it.
-local function onModePreset(params, prefix)
-  local id = tonumber(params[prefix .. "_ID"])
-  if id == nil then
-    return nil
-  end
-  return {
-    id = id,
-    origin = tonumber(params[prefix .. "_ORIGIN"]),
-    x = tonumber(params[prefix .. "_COLOR_X"]),
-    y = tonumber(params[prefix .. "_COLOR_Y"]),
-    mode = tonumber(params[prefix .. "_COLOR_MODE"]) or 0,
-  }
-end
-
---- Keep a stored color on mode's presets in step with an edited preset.
-function MqttLight:_followColorPreset(id, origin, color)
-  local mode = self.settings.colorOnMode
-  if mode == nil then
-    return
-  end
-  for _, which in ipairs({ "on", "fade" }) do
-    local p = mode[which]
-    if p ~= nil and p.id == id and (p.origin or MqttLight.PRESET_ORIGIN_DEVICE) == origin then
-      p.x, p.y, p.mode = color and color.x, color and color.y, color and color.mode or p.mode
-    end
-  end
-end
-
---- The proxy's preset and on mode settings.
---- @return boolean handled
-function MqttLight:_handlePresetCommand(command, params)
-  local s = self.settings
-  if command == "SET_PRESET_LEVEL" then
-    local level = num(params, "LEVEL")
-    if level ~= nil then
-      s.onLevel = level
-      self:_notify("PRESET_LEVEL", { BRIGHTNESS = level })
-      self:_saveSettings()
-    end
-  elseif command == "UPDATE_BRIGHTNESS_PRESET" then
-    local id = num(params, "PRESET_ID", "ID")
-    local level = num(params, "LEVEL")
-    s.brightnessPresets = s.brightnessPresets or {}
-    if id ~= nil then
-      s.brightnessPresets[tostring(id)] = params.COMMAND ~= "REMOVED" and level or nil
-    end
-    -- The level an On goes to follows an edit of its preset (On, id 1, unless
-    -- the on mode names another).
-    local onPreset = tonumber(s.brightnessOnPreset) or 1
-    if
-      level ~= nil
-      and params.COMMAND ~= "REMOVED"
-      and id ~= MqttLight.PREVIOUS_PRESET_ID
-      and (id == onPreset or (id == nil and params.NAME == "On"))
-    then
-      s.onLevel = level
-    end
-    self:_saveSettings()
-  elseif command == "UPDATE_BRIGHTNESS_ON_MODE" then
-    -- Brightness On Mode: Preset (a level) or Previous (preset 10).
-    local id = num(params, "BRIGHTNESS_PRESET_ID")
-    local level = num(params, "BRIGHTNESS_PRESET_LEVEL")
-    s.brightnessOnPreset = id
-    if level ~= nil and level > 0 and id ~= MqttLight.PREVIOUS_PRESET_ID then
-      s.onLevel = level
-    end
-    self:_saveSettings()
-  elseif command == "SET_BRIGHTNESS_ON_MODE" then
-    local id = num(params, "PRESET_ID")
-    if id ~= nil then
-      s.brightnessOnPreset = id
-      local level = tonumber((s.brightnessPresets or {})[tostring(id)])
-      if level ~= nil and level > 0 and id ~= MqttLight.PREVIOUS_PRESET_ID then
-        s.onLevel = level
-      end
-      self:_saveSettings()
-    end
   elseif command == "UPDATE_COLOR_PRESET" then
-    local id = num(params, "ID", "PRESET_ID")
-    local origin = num(params, "ORIGIN", "PRESET_ORIGIN") or MqttLight.PRESET_ORIGIN_DEVICE
-    local x, y = num(params, "COLOR_X"), num(params, "COLOR_Y")
-    local removed = params.COMMAND == "REMOVED" or x == nil or y == nil
-    local color = not removed and { x = x, y = y, mode = num(params, "COLOR_MODE") or 0 } or nil
-    if id ~= nil then
-      s.colorPresets = s.colorPresets or {}
-      s.colorPresets[presetKey(id, origin)] = color
-      self:_followColorPreset(id, origin, color)
-    end
-    -- The Default On and Dim colors by name (lights set up before on modes).
     local name = tostring(params.NAME or "")
+    local x, y = num(params, "COLOR_X"), num(params, "COLOR_Y")
     local key = (name == "On" and "onColor") or ((name == "Dim" or name == "Off") and "dimColor") or nil
     if key ~= nil then
-      s[key] = color
-    end
-    self:_saveSettings()
-  elseif command == "UPDATE_COLOR_ON_MODE" then
-    -- Color On Mode: Preset, Previous, or Fade (Dim-To-Warm); the Daylight
-    -- Agent's preset is a Preset with the agent as its origin.
-    local on = onModePreset(params, "COLOR_PRESET")
-    if on ~= nil then
-      s.colorOnMode = { on = on, fade = onModePreset(params, "COLOR_FADE_PRESET") }
-      if on.x ~= nil then
-        s.colorPresets = s.colorPresets or {}
-        s.colorPresets[presetKey(on.id, on.origin)] = { x = on.x, y = on.y, mode = on.mode }
-      end
-      self:_saveSettings()
-      -- A light lit in that preset follows its new color (the Daylight Agent
-      -- moves its preset through the day).
-      local cur = self.colorPreset
-      if
-        cur ~= nil
-        and cur.id == on.id
-        and cur.origin == on.origin
-        and on.x ~= nil
-        and (self.level or 0) > 0
-        and not sameXy(self.color, on)
-      then
-        self:setColor({ x = on.x, y = on.y, mode = on.mode }, s.colorRateDefault, cur)
-      end
-    end
-  elseif command == "SET_COLOR_ON_MODE" then
-    -- The mode itself comes with UPDATE_COLOR_ON_MODE's presets.
-    return true
-  else
-    return false
-  end
-  return true
-end
-
---- Read the proxy's setup (GET_SETUP): the on modes, presets and default rates
---- it holds. The proxy sends these only when they change, so a light added or
---- updated reads them once at start.
---- @param xml string
---- @return boolean read
-function MqttLight:readSetup(xml)
-  if type(xml) ~= "string" or xml == "" then
-    return false
-  end
-  local ok, setup = pcall(function()
-    return Select(ParseXml(xml), "setup")
-  end)
-  if not ok or type(setup) ~= "table" then
-    log:warn("The proxy's setup could not be read")
-    return false
-  end
-  local s = self.settings
-  local function list(t)
-    if type(t) ~= "table" then
-      return {}
-    end
-    return IsList(t) and t or { t }
-  end
-  s.colorPresets = s.colorPresets or {}
-  for _, c in ipairs(list(Select(setup, "colors", "color"))) do
-    local a = c._attr or {}
-    local id, x, y = tonumber(a.id), tonumber(a.color_x), tonumber(a.color_y)
-    if id ~= nil and x ~= nil and y ~= nil then
-      s.colorPresets[presetKey(id, a.origin)] = { x = x, y = y, mode = tonumber(a.color_mode) or 0 }
-    end
-  end
-  s.brightnessPresets = s.brightnessPresets or {}
-  for _, l in ipairs(list(Select(setup, "brightnesses", "level"))) do
-    local a = l._attr or {}
-    if tonumber(a.id) ~= nil and tonumber(a.level) ~= nil then
-      s.brightnessPresets[tostring(tonumber(a.id))] = tonumber(a.level)
-    end
-  end
-  local levelId = tonumber(setup.light_brightness_on_mode_preset_id)
-  if levelId ~= nil then
-    s.brightnessOnPreset = levelId
-    local level = tonumber(s.brightnessPresets[tostring(levelId)])
-    if level ~= nil and level > 0 and levelId ~= MqttLight.PREVIOUS_PRESET_ID then
-      s.onLevel = level
-    end
-  end
-  local function preset(idKey, originKey)
-    local id = tonumber(setup[idKey])
-    if id == nil then
-      return nil
-    end
-    local origin = tonumber(setup[originKey])
-    local c = self:_colorPresetById(id, origin) or {}
-    return { id = id, origin = origin, x = c.x, y = c.y, mode = c.mode or 0 }
-  end
-  local on = preset("light_color_on_mode_preset_id", "light_color_on_mode_preset_origin")
-  if on ~= nil then
-    s.colorOnMode = {
-      on = on,
-      fade = preset("light_color_on_mode_fade_preset_id", "light_color_on_mode_fade_preset_origin"),
-    }
-  end
-  local rate = tonumber(setup.light_brightness_rate_default)
-  if rate ~= nil then
-    s.brightnessRateDefault = rate
-  end
-  rate = tonumber(setup.light_color_rate_default)
-  if rate ~= nil then
-    s.colorRateDefault = rate
-  end
-  self:_saveSettings()
-  return true
-end
-
--------------------------------------------------------------------------------
--- Advanced Lighting Scenes
--------------------------------------------------------------------------------
-
---- A scene's elements (PUSH_SCENE's ELEMENTS) as steps. Each element waits its
---- delay, then sets its brightness and/or color over its rate.
----   <element><delay>0</delay><rate>750</rate><brightnessEnabled>true</brightnessEnabled>
----   <brightness>40</brightness><colorEnabled>true</colorEnabled><colorX>0.45</colorX>
----   <colorY>0.41</colorY><colorMode>1</colorMode></element>
---- @param xml string|nil
---- @return table[] steps
-function MqttLight.parseSceneElements(xml)
-  local steps = {}
-  if type(xml) ~= "string" or not xml:find("<element", 1, true) then
-    return steps
-  end
-  local ok, parsed = pcall(ParseXml, "<root>" .. xml .. "</root>")
-  if not ok then
-    log:warn("A scene could not be read: %s", parsed)
-    return steps
-  end
-  local elements = Select(parsed, "root", "element") or {}
-  if not IsList(elements) then
-    elements = { elements }
-  end
-  local function bool(v)
-    v = tostring(v or ""):lower()
-    return v == "true" or v == "1"
-  end
-  for _, el in ipairs(elements) do
-    if type(el) == "table" then
-      local rawLevelOn, rawColorOn = el.brightnessEnabled, el.colorEnabled
-      local step = {
-        delay = math.max(0, tonumber(el.delay) or 0),
-        brightnessRate = math.max(0, tonumber(el.brightnessRate) or tonumber(el.rate) or 0),
-        colorRate = tonumber(el.colorRate),
-        level = tonumber(el.brightness) or tonumber(el.level),
-        levelEnabled = bool(rawLevelOn),
-        colorEnabled = bool(rawColorOn),
-        x = tonumber(el.colorX),
-        y = tonumber(el.colorY),
-        mode = tonumber(el.colorMode) or 0,
-      }
-      -- An older layout: a <level> with no enabled flags.
-      if rawLevelOn == nil and rawColorOn == nil and step.level ~= nil then
-        step.levelEnabled = true
-      end
-      if step.colorEnabled and (step.x == nil or step.y == nil) then
-        step.colorEnabled = false
-      end
-      step.colorRate = math.max(0, step.colorRate or step.brightnessRate)
-      if step.levelEnabled or step.colorEnabled or step.delay > 0 then
-        steps[#steps + 1] = step
-      end
-    end
-  end
-  return steps
-end
-
---- End the running scene: its later steps are not taken. A fade already sent runs on.
-function MqttLight:_stopScene()
-  if self.sceneRun ~= nil then
-    CancelTimer(self:_timer("Scene"))
-    self.sceneRun = nil
-  end
-end
-
-function MqttLight:_scene(id)
-  return (self.settings.scenes or {})[tostring(id)]
-end
-
---- Start a scene from its first step.
-function MqttLight:activateScene(id)
-  local scene = self:_scene(id)
-  self:_stopScene()
-  self.sceneRamping = false
-  if scene == nil then
-    log:warn("Scene %s was never sent to this light", tostring(id))
-    return
-  end
-  self.sceneRun = { id = id, idx = 0, waited = false }
-  self:_sceneNext(self.sceneRun)
-end
-
---- Go to the run's next step: wait out its delay, or take it now. A flash
---- scene starts over, unless a whole pass took no time.
-function MqttLight:_sceneNext(run)
-  if self.sceneRun ~= run then
-    return
-  end
-  local scene = self:_scene(run.id)
-  if scene == nil then
-    self.sceneRun = nil
-    return
-  end
-  local idx = run.idx + 1
-  if idx > #scene.elements then
-    if scene.flash and run.waited then
-      idx, run.waited = 1, false
-    else
-      self.sceneRun = nil
-      return
-    end
-  end
-  run.idx = idx
-  local step = scene.elements[idx]
-  if step.delay > 0 then
-    run.waited = true
-    SetTimer(self:_timer("Scene"), step.delay, function()
-      self:_sceneApply(run)
-    end)
-  else
-    self:_sceneApply(run)
-  end
-end
-
---- Take the run's step, then go on once its fade has had its time.
-function MqttLight:_sceneApply(run)
-  if self.sceneRun ~= run then
-    return
-  end
-  local scene = self:_scene(run.id)
-  local step = scene and scene.elements[run.idx]
-  if step == nil then
-    self.sceneRun = nil
-    return
-  end
-  local color = step.colorEnabled and { x = step.x, y = step.y, mode = step.mode } or nil
-  if step.levelEnabled and step.level ~= nil then
-    self:rampTo(step.level, step.brightnessRate, color)
-  elseif color ~= nil then
-    self:setColor(color, step.colorRate)
-  end
-  local ms = math.max(step.levelEnabled and step.brightnessRate or 0, color and step.colorRate or 0)
-  if ms > 0 then
-    run.waited = true
-    SetTimer(self:_timer("Scene"), ms, function()
-      self:_sceneNext(run)
-    end)
-  else
-    self:_sceneNext(run)
-  end
-end
-
---- Advanced Lighting Scene commands.
---- @return boolean handled
-function MqttLight:_handleSceneCommand(command, params)
-  local s = self.settings
-  local id = num(params, "SCENE_ID")
-  if command == "PUSH_SCENE" then
-    if id == nil then
-      return true
-    end
-    s.scenes = s.scenes or {}
-    s.scenes[tostring(id)] = {
-      elements = MqttLight.parseSceneElements(params.ELEMENTS),
-      flash = tostring(params.FLASH or ""):lower() == "true",
-      ignoreRamp = tostring(params.IGNORE_RAMP or ""):lower() == "true",
-    }
-    log:debug("Scene %d stored: %d steps", id, #s.scenes[tostring(id)].elements)
-    self:_saveSettings()
-  elseif command == "REMOVE_SCENE" then
-    if id ~= nil and s.scenes ~= nil then
-      s.scenes[tostring(id)] = nil
-      if self.sceneRun and self.sceneRun.id == id then
-        self:_stopScene()
+      if params.COMMAND == "REMOVED" or x == nil or y == nil then
+        s[key] = nil
+      else
+        s[key] = { x = x, y = y, mode = num(params, "COLOR_MODE") or 0 }
       end
       self:_saveSettings()
     end
-  elseif command == "CLEAR_ALL_SCENES" then
-    self:_stopScene()
-    s.scenes = {}
-    self:_saveSettings()
-  elseif command == "ACTIVATE_SCENE" or command == "TOGGLE_SCENE" then
-    -- The agent keeps each scene's active state; the light runs the steps.
-    if id ~= nil then
-      self:activateScene(id)
-    end
-  elseif command == "DEACTIVATE_SCENE" then
-    if self.sceneRun and (id == nil or self.sceneRun.id == id) then
-      self:_stopScene()
-    end
-  elseif command == "RAMP_SCENE_UP" or command == "RAMP_SCENE_DOWN" then
-    local scene = id and self:_scene(id) or nil
-    if scene ~= nil and scene.ignoreRamp then
-      return true
-    end
-    self:_stopScene()
-    local up = command == "RAMP_SCENE_UP"
-    local last = scene and scene.elements[#scene.elements]
-    local color = last and last.colorEnabled and { x = last.x, y = last.y, mode = last.mode } or nil
-    local rate = num(params, "RATE") or (up and s.holdRateUp or s.holdRateDown) or 3000
-    self.sceneRamping = true
-    self:rampTo(up and 100 or 0, rate, color, true)
-  elseif command == "STOP_SCENE_RAMP" or command == "STOP_RAMP_SCENE" then
-    self:_stopScene()
-    if self.sceneRamping then
-      self.sceneRamping = false
-      self:stopRamp()
-    end
-  elseif command == "ALL_SCENES_PUSHED" or command == "SYNC_SCENE" or command == "SYNC_ALL_SCENES" then
-    -- Nothing to send back: the scenes live in the proxy and here as pushed.
-    return true
   else
     return false
   end

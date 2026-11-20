@@ -455,6 +455,19 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111915 - 2026-11-21
+
+### Changed
+
+- MQTT Light: back to v2026111911, the last version confirmed working. The
+  Advanced Lighting Scene, on mode and Daylight support of v2026111912 to
+  v2026111914 is withdrawn: Composer keeps the capabilities a light had when it
+  was added, so lights added before those versions were no longer offered in an
+  Advanced Lighting Scene's Add/Remove list unless deleted and added again.
+  Reboot the controller after updating. A light deleted and added again with
+  v2026111912 to v2026111914 may need the same once more to be offered in the
+  Add/Remove list.
+
 ## v2026111914 - 2026-11-20
 
 ### Fixed
