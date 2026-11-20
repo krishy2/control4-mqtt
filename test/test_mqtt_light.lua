@@ -632,6 +632,13 @@ for _, cap in ipairs({ "brightness_rate_max", "color_rate_max" }) do
   T.eq("driver.xml declares the same " .. cap, xml:match("<" .. cap .. ">(%d+)</" .. cap .. ">"), "65535")
 end
 T.eq("a light with no topics starts as a switch", capsMsg and capsMsg.dimmer, "false")
+-- driver.xml declares color and color temperature so Composer sets up its color
+-- fade field (otherwise "Error setting default color rate", range 0-0); the
+-- light tells what it can really do at start.
+for _, cap in ipairs({ "supports_color", "supports_color_correlated_temperature" }) do
+  T.eq("driver.xml declares " .. cap, (xml:match("<" .. cap .. ">(%a+)</" .. cap .. ">") or ""):lower(), "true")
+  T.eq("but a light without color says so at start: " .. cap, capsMsg and capsMsg[cap], "false")
+end
 
 reset()
 Properties["Brightness Command Topic"] = "cmnd/x/Dimmer"

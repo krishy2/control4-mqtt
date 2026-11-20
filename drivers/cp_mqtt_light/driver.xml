@@ -37,8 +37,8 @@
     <click_rate_max>65535</click_rate_max>
     <hold_rate_min>1000</hold_rate_min>
     <hold_rate_max>86400000</hold_rate_max>
-    <supports_color>False</supports_color>
-    <supports_color_correlated_temperature>False</supports_color_correlated_temperature>
+    <supports_color>True</supports_color>
+    <supports_color_correlated_temperature>True</supports_color_correlated_temperature>
     <color_correlated_temperature_min>2000</color_correlated_temperature_min>
     <color_correlated_temperature_max>6500</color_correlated_temperature_max>
     <color_trace_tolerance>2</color_trace_tolerance>

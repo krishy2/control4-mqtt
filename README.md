@@ -455,6 +455,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111917 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: Composer's "Error setting default color rate from driver" (Minimum
+  and Maximum 0.000). The driver declared no color and no color temperature, so
+  Composer never set up the light's color fade field and then refused Control4's
+  0.75 s default. driver.xml now declares both; at start the light tells
+  Control4 what it can really do, as before. Composer reads this when a light is
+  added, so lights added earlier may still show the message.
+
 ## v2026111916 - 2026-11-21
 
 ### Added

@@ -713,10 +713,12 @@ same commands arriving and the light's reports (`ZbReceived`).
   steps it already has, but Composer does not offer it in an Advanced Lighting
   Scene's Add/Remove list until it is deleted and added again. A light added
   with v2026111912 or later is offered.
-- **Default Color Rate message** - Composer may show "Error setting default
-  color rate from driver" (Minimum and Maximum 0.000) when it opens a light that
-  has no color or color temperature when it is added. Click OK: the light works;
-  only that one default cannot be edited in Composer.
+- **Color in Composer** - the driver declares color and color temperature, so
+  Composer sets up the light's color fields (and its Default Color Rate) when
+  the light is added; at start the light tells Control4 what it can really do,
+  so a plain dimmer shows no color controls. A light added before v2026111917
+  may still show Composer's "Error setting default color rate" message: click
+  OK, it is harmless.
 
 ## Connections
 
