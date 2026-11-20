@@ -115,7 +115,7 @@ for cap, want in pairs({
   color_on_mode_previous = "true",
   color_on_mode_fade = "true",
 }) do
-  T.eq(cap, xml:match("<" .. cap .. ">(%a+)</" .. cap .. ">"), want)
+  T.eq(cap, (xml:match("<" .. cap .. ">(%a+)</" .. cap .. ">") or ""):lower(), want)
 end
 
 -------------------------------------------------------------------------------

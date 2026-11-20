@@ -18,6 +18,18 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111914 - 2026-11-20
+
+### Fixed
+
+- MQTT Light: after v2026111912 no MQTT Light appeared in the Add/Remove list of
+  an Advanced Lighting Scene. The light's capabilities now follow the full set a
+  light with working Advanced Lighting Scenes declares: `True`/`False` values,
+  and `supports_default_on`, `supports_color_stop`, `color_trace_tolerance`,
+  `has_fixed_ramp_rate`, `fixed_ramp_rate`, `has_extras`, `disable_flash` and
+  `multi_click` declared; fade times up to 65535 ms; color rate behavior 1. The
+  light tells the same at runtime. Reboot the controller after updating.
+
 ## v2026111913 - 2026-11-20
 
 ### Changed

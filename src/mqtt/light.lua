@@ -431,10 +431,9 @@ function MqttLight:describeCapabilities()
   return table.concat(parts, ", ")
 end
 
---- Fade time range in ms. Composer reads these as 16-bit numbers, so the
---- maximum must stay at 32767 (32.7 s); driver.xml declares the same.
+--- Fade time range in ms (up to 65.5 s); driver.xml declares the same.
 MqttLight.RATE_MIN = 0
-MqttLight.RATE_MAX = 32767
+MqttLight.RATE_MAX = 65535
 --- The proxy's default fade time (ms), declared so Composer's rate controls
 --- always have a value inside their range.
 MqttLight.RATE_DEFAULT = 750
@@ -446,10 +445,8 @@ function MqttLight.rateCapabilities()
   return {
     brightness_rate_min = tostring(MqttLight.RATE_MIN),
     brightness_rate_max = tostring(MqttLight.RATE_MAX),
-    brightness_rate_default = tostring(MqttLight.RATE_DEFAULT),
     color_rate_min = tostring(MqttLight.RATE_MIN),
     color_rate_max = tostring(MqttLight.RATE_MAX),
-    color_rate_default = tostring(MqttLight.RATE_DEFAULT),
   }
 end
 
@@ -458,14 +455,23 @@ end
 --- @return table
 function MqttLight:dynamicCapabilities()
   local c = self.caps
+  -- The same set every time, so the proxy and Composer never keep a stale one.
   local params = {
     dimmer = boolStr(c.dimmer),
     set_level = boolStr(c.dimmer),
-    supports_target = "true",
+    supports_target = boolStr(c.dimmer),
+    ramp_level = boolStr(c.dimmer),
     supports_brightness_stop = boolStr(c.dimmer),
+    has_fixed_ramp_rate = "false",
+    fixed_ramp_rate = "0",
     supports_color = boolStr(c.color),
     supports_color_correlated_temperature = boolStr(c.cct),
-    color_rate_behavior = c.transition and "1" or "0",
+    -- The proxy passes a brightness stop on only to a light that has a color stop.
+    supports_color_stop = boolStr(c.dimmer or c.color or c.cct),
+    color_rate_behavior = "1",
+    has_extras = "false",
+    cold_start = "false",
+    color_trace_tolerance = "2",
   }
   -- Always sent: Composer reads missing ranges as 0-0 and then refuses the
   -- proxy's default fade time (0.75 s), even on a light without color.
