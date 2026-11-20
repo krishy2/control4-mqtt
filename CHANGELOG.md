@@ -18,6 +18,14 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111913 - 2026-11-20
+
+### Changed
+
+- MQTT Light documentation: after updating, a controller reboot is enough for
+  Composer to offer Delay, the on modes and load groups on existing lights
+  (confirmed); they do not need to be deleted and added again.
+
 ## v2026111912 - 2026-11-20
 
 ### Added

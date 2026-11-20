@@ -705,10 +705,10 @@ same commands arriving and the light's reports (`ZbReceived`).
 - **Light groups** - the light can be a member of a Control4 Dimmer Load Group
   (a Switch Load Group only takes lights that cannot dim). A group's level, ramp
   and stop commands are carried out by each MQTT Light on its own device.
-- **After updating from an earlier version** - Composer reads what a light can
-  do (load groups, full scene support with Delay, on modes) when the light is
-  added. A light added with an earlier version may need a controller reboot, or
-  to be deleted and added again, before Composer offers these.
+- **After updating from an earlier version** - what a light can do (load groups,
+  full scene support with Delay, on modes) is read when the controller starts.
+  After updating, reboot the controller once and reconnect Composer; the lights
+  do not need to be deleted and added again.
 
 ## Connections
 
