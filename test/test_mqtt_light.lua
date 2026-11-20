@@ -1628,11 +1628,11 @@ local d65 = Color.xyToCct(0.3127, 0.329)
 T.check("a white off the line (D65) reads about 6500 K, as before", math.abs(d65 - 6504) < 5, tostring(d65))
 
 -------------------------------------------------------------------------------
-T.section("Zigbee: turning on from off, color temperature after the fade")
+T.section("Zigbee: off with Power, on with the level")
 -------------------------------------------------------------------------------
--- A TS0502B fading on from off switched itself off again when the color
--- temperature command came before or 250 ms into the fade; one second after a
--- 0.8 s fade it stayed on.
+-- A TS0502B turned off by level 0 (Move to Level with On/Off) flashed and went
+-- off again when next turned on. Turned off with Power, it fades on and takes a
+-- color 0.3 s later without flashing.
 reset()
 clock = 0
 light = newLight({
@@ -1640,13 +1640,20 @@ light = newLight({
   optimistic = "Auto",
   stateOn = "1",
   stateOff = "0",
+  payloadOn = "1",
+  payloadOff = "0",
   brightnessMax = 254,
   colorTempUnit = "Mireds",
   colorTempMin = 2000,
   colorTempMax = 6500,
   fadeMode = MqttLight.FADE_JUMP,
   topics = {
-    power = { stateTopic = "z/s", valuePath = "$.ZbReceived['0x351F'].Power" },
+    power = {
+      stateTopic = "z/s",
+      valuePath = "$.ZbReceived['0x351F'].Power",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = '{"Device":"spot2","Send":{"Power":{value}}}',
+    },
     brightness = {
       stateTopic = "z/s",
       valuePath = "$.ZbReceived['0x351F'].Dimmer",
@@ -1681,23 +1688,56 @@ light:handleProxyCommand("SET_COLOR_TARGET", {
 })
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
 light:flush()
-T.eq("from off: brightness first", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":"0008!04/0F0800"}' })
-T.eq("color temperature 2 s after turning on (1 s flashed and went off)", delays[1], 2000)
+T.eq(
+  "from off: the level alone turns it on (no Power)",
+  published("cmnd/zigbee/ZbSend"),
+  { '{"Device":"spot2","Send":"0008!04/0F0800"}' }
+)
+T.eq("color temperature 250 ms after the brightness", delays[1], 250)
 ShimFireTimers()
+SetTimer = realSetTimer2
 light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":38,"CT":446}}}')
 ShimFireTimers()
+
 reset()
-delays = {}
-local cx2, cy2 = Color.cctToXy(4000)
-light:handleProxyCommand("SET_COLOR_TARGET", {
-  LIGHT_COLOR_TARGET_X = tostring(cx2),
-  LIGHT_COLOR_TARGET_Y = tostring(cy2),
-  LIGHT_COLOR_TARGET_MODE = "1",
-  LIGHT_COLOR_TARGET_RATE = "0",
-})
-light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "60", RATE = "750" })
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "1500" })
 light:flush()
-T.eq("already on: color temperature 250 ms after the brightness", delays[1], 250)
-SetTimer = realSetTimer2
+T.eq(
+  "fade off: down to the lowest level first",
+  published("cmnd/zigbee/ZbSend"),
+  { '{"Device":"spot2","Send":"0008!04/010F00"}' }
+)
+ShimFireTimers()
+T.eq("then Power off after the fade", published("cmnd/zigbee/ZbSend"), {
+  '{"Device":"spot2","Send":"0008!04/010F00"}',
+  '{"Device":"spot2","Send":{"Power":0}}',
+})
+light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":0,"Dimmer":1,"CT":446}}}')
+ShimFireTimers()
+
+light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":100,"CT":446}}}')
+ShimFireTimers()
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "0" })
+light:flush()
+ShimFireTimers()
+T.eq("off without a fade: Power off only", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":{"Power":0}}' })
+
+light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":100,"CT":446}}}')
+ShimFireTimers()
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "1500" })
+light:flush()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "0" })
+light:flush()
+ShimFireTimers()
+local zbOut = published("cmnd/zigbee/ZbSend")
+local offSent = false
+for _, m in ipairs(zbOut) do
+  if m:find('"Power":0', 1, true) then
+    offSent = true
+  end
+end
+T.eq("turned on during the fade off: the Off does not go out", offSent, false)
 
 T.finish()

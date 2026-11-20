@@ -498,13 +498,10 @@ function Zigbee.lightProperties(dev, loadId, chosen)
       props[k] = v
     end
   end
-  -- A dimmer is switched with Move to Level with On/Off (level 0 is off), so
-  -- turning on and off fades too; Power only reports. A switch uses Power.
-  local powerCommand = nil -- Tasmota's Power command
-  if load.dimmer then
-    powerCommand = false -- report only
-  end
-  merge(feature("Power", true, "Power", powerCommand))
+  -- A dimmer is turned on with Move to Level with On/Off, so turning on fades
+  -- too, and off with Power (after a fade down to the lowest level): a TS0502B
+  -- turned off by level 0 flashes and goes off again when next turned on.
+  merge(feature("Power", true, "Power"))
   merge(feature("Brightness", load.dimmer, "Dimmer", "0008!04/{hex8}{time16}"))
   merge(feature("Color Temp", load.ct, "CT", "0300!0A/{hex16}{time16}"))
   merge(feature("Color", false, ""))

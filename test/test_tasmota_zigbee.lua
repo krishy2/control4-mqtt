@@ -148,10 +148,11 @@ T.eq(
   props["Color Temp Command Payload"],
   '{"Device":"0xA4C13837E8E485BF","Send":"0300!0A/{hex16}{time16}"}'
 )
-T.eq("a dimmer is switched by its level: Power only reports", {
+T.eq("a dimmer is turned off with Power (level 0 made a TS0502B flash when next turned on)", {
   props["Power Command Topic"],
+  props["Power Command Payload"],
   props["Power State Topic"],
-}, { "", "tele/zigbee/E53A/SENSOR" })
+}, { "cmnd/zigbee/ZbSend", '{"Device":"0xA4C13837E8E485BF","Send":{"Power":{value}}}', "tele/zigbee/E53A/SENSOR" })
 local switchProps = Zigbee.lightProperties(unnamed, "light", 0)
 T.eq(
   "a switch uses Power",

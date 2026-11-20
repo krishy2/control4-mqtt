@@ -75,12 +75,9 @@ local HOLD_STEP_MS = 500
 -- A light whose commands carry the fade time gets the color this long after
 -- the brightness: a two-channel Zigbee bulb (Tuya TS0502B) jumps when a color
 -- temperature command comes first or together with the brightness command.
+-- Turned off with Power (not brightness 0), it takes a color 0.3 s after
+-- turning on from off without flashing.
 local COLOR_AFTER_LEVEL_MS = 250
--- After turning on from off the same bulb switches itself off again on a color
--- temperature change within its first moments: tested on spot2 with a 0.8 s
--- fade, the change 1 s after the on flashed and went off, 2 s after was smooth.
-local COLOR_AFTER_ON_MIN_MS = 2000
-local COLOR_AFTER_ON_FADE_MS = 1250
 -- After a command, reports of another level are taken as late (sent before the
 -- light got there) for this long, plus the fade time.
 local SETTLE_MS = 2000
@@ -1453,13 +1450,29 @@ function MqttLight:_send(cmd)
   if cmd.color ~= nil then
     CancelTimer(self:_timer("ColorAfterLevel"))
   end
+  -- A newer command replaces an Off still waiting for its fade down.
+  CancelTimer(self:_timer("OffAfterFade"))
+
+  -- Brightness commands that carry the fade time switch the light too (Zigbee
+  -- Move to Level with On/Off), but off goes out as Power: a two-channel
+  -- Zigbee bulb (Tuya TS0502B) turned off by brightness 0 flashes and goes
+  -- off again when next turned on. A fade off goes down to the lowest
+  -- brightness first, then Power off.
+  local levelSwitches = cmdTopic("brightness") ~= ""
+    and MqttLight.templateHasTime((topics.brightness or {}).commandTemplate)
 
   if c.transition and cmd.rate ~= nil and cmdTopic("transition") ~= "" then
     send("transition", self:_transitionValue(cmd.rate))
   end
 
   if turningOff then
-    if cmdTopic("power") ~= "" then
+    local rate = math.max(0, tonumber(cmd.rate) or 0)
+    if levelSwitches and cmdTopic("power") ~= "" and rate > 0 and self.device.power ~= false then
+      send("brightness", 1)
+      SetTimer(self:_timer("OffAfterFade"), rate, function()
+        send("power", notEmpty(self.cfg.payloadOff) and self.cfg.payloadOff or "OFF")
+      end)
+    elseif cmdTopic("power") ~= "" then
       send("power", notEmpty(self.cfg.payloadOff) and self.cfg.payloadOff or "OFF")
     elseif cmdTopic("brightness") ~= "" then
       send("brightness", 0)
@@ -1472,7 +1485,8 @@ function MqttLight:_send(cmd)
     return
   end
 
-  if cmd.power == true and cmdTopic("power") ~= "" then
+  -- Turning on with a brightness that switches the light needs no Power.
+  if cmd.power == true and cmdTopic("power") ~= "" and not (levelSwitches and level ~= nil and level > 0) then
     send("power", notEmpty(self.cfg.payloadOn) and self.cfg.payloadOn or "ON")
   end
 
@@ -1524,15 +1538,7 @@ function MqttLight:_send(cmd)
   end
 
   if colorLater ~= nil then
-    -- Turning on from off, the color waits for the fade on to finish: the same
-    -- bulb switches itself off again when a color temperature command comes
-    -- before or during it (tested: color first, or 250 ms in, both flash and
-    -- go off; one second after a 0.8 s fade, it stays on).
-    local wait = COLOR_AFTER_LEVEL_MS
-    if cmd.power == true then
-      wait = math.max(COLOR_AFTER_ON_MIN_MS, math.max(0, tonumber(cmd.rate) or 0) + COLOR_AFTER_ON_FADE_MS)
-    end
-    SetTimer(self:_timer("ColorAfterLevel"), wait, function()
+    SetTimer(self:_timer("ColorAfterLevel"), COLOR_AFTER_LEVEL_MS, function()
       send("colorTemp", colorLater)
     end)
   end

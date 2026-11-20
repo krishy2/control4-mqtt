@@ -567,7 +567,9 @@ bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and
 | Payload Mode               | Separate Topics                                       |
 | Power State Topic          | `tele/zigbee/E53A/SENSOR`                             |
 | Power Value Path           | `$.ZbReceived['0xE53A'].Power`                        |
-| Power Command Topic        | (empty: brightness switches the light)                |
+| Power Command Topic        | `cmnd/zigbee/ZbSend`                                  |
+| Power Command Payload      | `{"Device":"spot1","Send":{"Power":{value}}}`         |
+| Payload On / Payload Off   | `1` / `0`                                             |
 | State On / State Off       | `1` / `0`                                             |
 | Brightness State Topic     | `tele/zigbee/E53A/SENSOR`                             |
 | Brightness Value Path      | `$.ZbReceived['0xE53A'].Dimmer`                       |
@@ -583,22 +585,22 @@ bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and
 | Fade                       | Jump to Target                                        |
 
 The commands are the standard Zigbee ones with a fade time: `0008!04` (Move to
-Level with On/Off: level 0 turns the light off, any other level on) and
-`0300!0A` (Move to Color Temperature). The bulb does Control4's fades itself,
-including fading on and off. A plain switch uses
-`{"Device":"spot1","Send":{"Power":{value}}}` with Payload On / Off `1` / `0`
-instead. To check a bulb fades, run
+Level with On/Off: any level above 0 also turns the light on) and `0300!0A`
+(Move to Color Temperature). The bulb does Control4's fades itself, including
+fading on. Off goes out as Power off; a fade off first fades down to the lowest
+level, then Power off when the fade ends. Turning on with a level sends no
+Power. A plain switch uses only the Power command. To check a bulb fades, run
 `ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}` on the gateway: it should go
 to full over 3 seconds.
 
+Why off is not level 0: a TS0502B turned off with level 0 flashed and went off
+again the next time it was turned on, whatever came after. Turned off with
+Power, it fades on and takes a color temperature change right after.
+
 When brightness and color temperature change together (a scene, warm dimming),
-the brightness command goes first and the color temperature 250 ms later.
-Turning on from off, the color temperature waits at least 2 seconds (on a longer
-fade, until 1.25 s after it ends): the TS0502B switches itself off again on a
-color temperature change in its first moments after turning on (1 second after
-flashed and went off, 2 seconds after was smooth). A two-channel bulb such as
-the TS0502B jumps when the color temperature command comes first or at the same
-moment.
+the brightness command goes first and the color temperature 250 ms later. A
+two-channel bulb such as the TS0502B jumps when the color temperature command
+comes first or at the same moment.
 
 Messages without light values (for example only `LinkQuality`) are skipped. The
 short address in the state topics changes if the bulb is paired again. Without

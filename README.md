@@ -455,6 +455,22 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112107 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: Zigbee spots (Tuya TS0502B) flashed and went off again when a
+  scene turned them on from off. The cause was how they had been turned off:
+  with level 0 (Move to Level with On/Off). Turned off that way, the bulb
+  flashed and went off the next time it was turned on, whatever came after;
+  waiting longer before the color temperature did not help. Off now goes out as
+  Power off; a fade off first fades down to the lowest level, then Power off
+  when the fade ends. Turning on still fades with the level command, and the
+  color temperature goes out 250 ms after it again (the 2-second wait after
+  turning on from off is gone). Lights set up from a discovered Zigbee device
+  pick up the new Power Command Topic and Payload by themselves when they
+  connect to the broker after the update.
+
 ## v2026112106 - 2026-11-21
 
 ### Fixed

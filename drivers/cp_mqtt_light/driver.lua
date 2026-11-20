@@ -961,6 +961,10 @@ function RFP.BROKER_CONNECTED(idBinding, strCommand, tParams, args)
   updateOnline()
   requestState("broker connected")
   requestTasmotaList()
+  -- Settings made from a discovered device follow driver updates too.
+  if tasmotaSelection ~= nil then
+    requestTasmotaDevice(tasmotaSelection.mac)
+  end
 end
 
 function RFP.BROKER_DISCONNECTED(idBinding, strCommand, tParams, args)
