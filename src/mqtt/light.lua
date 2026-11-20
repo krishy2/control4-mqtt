@@ -534,7 +534,9 @@ end
 -------------------------------------------------------------------------------
 
 function MqttLight:_notify(command, params)
-  log:trace("light notify %s %s", command, params)
+  -- What Control4 is told, beside the commands it sends ("Light command"):
+  -- the scene agent judges a scene active from these reports.
+  log:debug("Told Control4 %s %s", command, params or {})
   SendToProxy(self.proxyBinding, command, params or {}, "NOTIFY")
 end
 

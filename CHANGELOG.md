@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112100 - 2026-11-21
+
+### Changed
+
+- MQTT Light: the debug log shows every report the light sends Control4
+  (`Told Control4 LIGHT_BRIGHTNESS_CHANGED {...}`, `LIGHT_COLOR_CHANGED`, the
+  changing reports and capabilities), beside the commands it receives. The scene
+  agent judges whether a scene is active from these reports.
+
 ## v2026111917 - 2026-11-21
 
 ### Fixed
