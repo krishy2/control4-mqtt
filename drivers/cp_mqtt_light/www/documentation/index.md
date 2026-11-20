@@ -598,8 +598,8 @@ Power. A plain switch uses only the Power command. To check a bulb fades, run
 `ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}` on the gateway: it should go
 to full over 3 seconds.
 
-The State Request Payload reads the three values, one cluster per `ZbSend`
-(one line):
+The State Request Payload reads the three values, one cluster per `ZbSend` (one
+line):
 
 ```
 ZbSend {"Device":"spot1","Cluster":"0x0006","Read":"0x0000"}; ZbSend {"Device":"spot1","Cluster":"0x0008","Read":"0x0000"}; ZbSend {"Device":"spot1","Cluster":"0x0300","Read":"0x0007"}

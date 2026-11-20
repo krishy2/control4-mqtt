@@ -29,8 +29,8 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
   time plus 2 seconds, the light now asks the device once (State Request) and
   tells Control4 the answer. Zigbee lights' State Request now reads On/Off,
   level and color temperature in one go (`cmnd/zigbee/Backlog`, one `ZbSend`
-  read per cluster); lights set up from a discovered Zigbee device pick it up
-  by themselves after the update.
+  read per cluster); lights set up from a discovered Zigbee device pick it up by
+  themselves after the update.
 
 ## v2026112107 - 2026-11-21
 
