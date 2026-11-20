@@ -76,6 +76,11 @@ local HOLD_STEP_MS = 500
 -- the brightness: a two-channel Zigbee bulb (Tuya TS0502B) jumps when a color
 -- temperature command comes first or together with the brightness command.
 local COLOR_AFTER_LEVEL_MS = 250
+-- After turning on from off the same bulb switches itself off again on a color
+-- temperature change within its first moments: tested on spot2 with a 0.8 s
+-- fade, the change 1 s after the on flashed and went off, 2 s after was smooth.
+local COLOR_AFTER_ON_MIN_MS = 2000
+local COLOR_AFTER_ON_FADE_MS = 1250
 -- After a command, reports of another level are taken as late (sent before the
 -- light got there) for this long, plus the fade time.
 local SETTLE_MS = 2000
@@ -1525,7 +1530,7 @@ function MqttLight:_send(cmd)
     -- go off; one second after a 0.8 s fade, it stays on).
     local wait = COLOR_AFTER_LEVEL_MS
     if cmd.power == true then
-      wait = wait + math.max(0, tonumber(cmd.rate) or 0)
+      wait = math.max(COLOR_AFTER_ON_MIN_MS, math.max(0, tonumber(cmd.rate) or 0) + COLOR_AFTER_ON_FADE_MS)
     end
     SetTimer(self:_timer("ColorAfterLevel"), wait, function()
       send("colorTemp", colorLater)

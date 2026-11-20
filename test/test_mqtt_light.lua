@@ -1682,7 +1682,7 @@ light:handleProxyCommand("SET_COLOR_TARGET", {
 light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
 light:flush()
 T.eq("from off: brightness first", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":"0008!04/0F0800"}' })
-T.eq("color temperature after the 750 ms fade and 250 ms", delays[1], 1000)
+T.eq("color temperature 2 s after turning on (1 s flashed and went off)", delays[1], 2000)
 ShimFireTimers()
 light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":38,"CT":446}}}')
 ShimFireTimers()

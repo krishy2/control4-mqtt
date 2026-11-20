@@ -455,6 +455,17 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112105 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: Zigbee spots (TS0502B) turned on from off by a scene with a color
+  still flashed and went off. Tested on spot2 with a real color change: color
+  temperature 1 s after turning on (0.8 s fade) flashed and went off, 2 s after
+  was smooth; switching on without a fade flashed too. Turning on from off, the
+  color temperature now waits at least 2 s (on a longer fade, until 1.25 s after
+  it ends). The earlier test that set one second changed no color.
+
 ## v2026112104 - 2026-11-21
 
 ### Changed

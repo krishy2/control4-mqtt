@@ -593,10 +593,12 @@ to full over 3 seconds.
 
 When brightness and color temperature change together (a scene, warm dimming),
 the brightness command goes first and the color temperature 250 ms later.
-Turning on from off, the color temperature waits until the fade on has finished:
-the TS0502B switches itself off again when a color temperature command comes
-before or during that fade. A two-channel bulb such as the TS0502B jumps when
-the color temperature command comes first or at the same moment.
+Turning on from off, the color temperature waits at least 2 seconds (on a longer
+fade, until 1.25 s after it ends): the TS0502B switches itself off again on a
+color temperature change in its first moments after turning on (1 second after
+flashed and went off, 2 seconds after was smooth). A two-channel bulb such as
+the TS0502B jumps when the color temperature command comes first or at the same
+moment.
 
 Messages without light values (for example only `LinkQuality`) are skipped. The
 short address in the state topics changes if the bulb is paired again. Without
