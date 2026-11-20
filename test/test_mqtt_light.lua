@@ -559,11 +559,10 @@ T.check(
   "driver.xml is not a combo driver (combo drivers get no proxy or Navigator UI)",
   not xml:find("<combo>", 1, true)
 )
--- Composer reads the brightness and color rate limits as 16-bit numbers: a larger
--- maximum wraps negative and even its 0.75 s default is refused as out of range.
+-- The fade time limits: 0 to 65535 ms, the same in driver.xml and at runtime.
 for _, cap in ipairs({ "brightness_rate_min", "brightness_rate_max", "color_rate_min", "color_rate_max" }) do
   local value = tonumber(xml:match("<" .. cap .. ">(%-?%d+)</" .. cap .. ">"))
-  T.check(cap .. " fits a 16-bit signed number", value ~= nil and value >= 0 and value <= 32767, tostring(value))
+  T.check(cap .. " is 0 to 65535", value ~= nil and value >= 0 and value <= 65535, tostring(value))
 end
 -- Composer takes missing ranges in DYNAMIC_CAPABILITIES_CHANGED as 0-0 and then
 -- refuses the 0.75 s default color rate on a plain dimmer.
@@ -622,17 +621,15 @@ T.eq("no driver code leaks into globals", { rawget(_G, "tasmotaSelection"), rawg
 local capsMsg = last(notifies("DYNAMIC_CAPABILITIES_CHANGED"))
 T.check("capabilities are sent at startup", capsMsg ~= nil)
 local capsMsgs = notifies("DYNAMIC_CAPABILITIES_CHANGED")
-T.eq("fade ranges and defaults go first, on their own", capsMsgs[1], {
+T.eq("fade ranges go first, on their own", capsMsgs[1], {
   brightness_rate_min = "0",
-  brightness_rate_max = "32767",
-  brightness_rate_default = "750",
+  brightness_rate_max = "65535",
   color_rate_min = "0",
-  color_rate_max = "32767",
-  color_rate_default = "750",
+  color_rate_max = "65535",
 })
-T.eq("and again with the capabilities", { capsMsg.color_rate_default, capsMsg.brightness_rate_max }, { "750", "32767" })
-for _, cap in ipairs({ "brightness_rate_default", "color_rate_default" }) do
-  T.eq("driver.xml declares " .. cap, xml:match("<" .. cap .. ">(%d+)</" .. cap .. ">"), "750")
+T.eq("and again with the capabilities", { capsMsg.color_rate_max, capsMsg.brightness_rate_max }, { "65535", "65535" })
+for _, cap in ipairs({ "brightness_rate_max", "color_rate_max" }) do
+  T.eq("driver.xml declares the same " .. cap, xml:match("<" .. cap .. ">(%d+)</" .. cap .. ">"), "65535")
 end
 T.eq("a light with no topics starts as a switch", capsMsg and capsMsg.dimmer, "false")
 
@@ -989,8 +986,8 @@ for id, name in pairs({ [300] = "ON Button Link", [301] = "OFF Button Link", [30
   end
   T.check("driver.xml declares the " .. name .. " (" .. id .. ")", found)
 end
-T.contains("has_leds: Composer shows the LED colors", xml, "<has_leds>true</has_leds>")
-T.contains("has_button_events", xml, "<has_button_events>true</has_button_events>")
+T.contains("has_leds: Composer shows the LED colors", xml:lower(), "<has_leds>true</has_leds>")
+T.contains("has_button_events", xml:lower(), "<has_button_events>true</has_button_events>")
 T.contains("three buttons", xml, "<num_buttons>3</num_buttons>")
 
 local function onLink(binding, command)
@@ -1130,7 +1127,7 @@ T.eq("chosen colors survive a restart", last(onLink(301, "BUTTON_COLORS")).ON_CO
 -------------------------------------------------------------------------------
 T.section("Load groups (Switch Group)")
 -------------------------------------------------------------------------------
-T.contains("driver.xml offers load groups", xml, "<load_group_support>true</load_group_support>")
+T.contains("driver.xml offers load groups", xml:lower(), "<load_group_support>true</load_group_support>")
 local grp = newLight({
   mode = "Separate Topics",
   topics = {

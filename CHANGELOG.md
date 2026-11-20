@@ -18,6 +18,24 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026111916 - 2026-11-21
+
+### Added
+
+- MQTT Light: full Advanced Lighting Scene support (Delay, flash, scene ramps),
+  on modes (Preset, Previous, Dim-To-Warm) and Daylight Agent support are back,
+  as in v2026111914, with the same capabilities declared.
+
+### Changed
+
+- MQTT Light documentation: after updating, the controller takes the new
+  capabilities at a reboot, but Composer keeps those a light had when it was
+  added. Lights added before v2026111912 keep working (scene steps with Delay
+  run), but are offered in an Advanced Lighting Scene's Add/Remove list only
+  once deleted and added again. A scene saved while its lights had full support
+  sends them `ACTIVATE_SCENE`, which needs this version. Composer's "Error
+  setting default color rate" message on lights without color is harmless.
+
 ## v2026111915 - 2026-11-21
 
 ### Changed
