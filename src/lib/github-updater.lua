@@ -14,8 +14,12 @@ require("drivers-common-public.global.lib")
 local GitHubUpdater = {}
 GitHubUpdater.__index = GitHubUpdater
 
---- How long the update socket stays open for writes that were not confirmed.
-local UPDATE_SOCKET_CLOSE_MS = 10000
+--- How long the update socket stays open. The controller works through the
+--- UpdateProjectC4i requests one by one, each taking seconds; closing the socket
+--- once they are written (not yet carried out) dropped the last one, the running
+--- driver's own update. Updating this driver restarts it, which closes the
+--- socket anyway.
+local UPDATE_SOCKET_CLOSE_MS = 180000
 
 --- Default headers for all HTTP requests to GitHub.
 --- @type table<string, string>
@@ -256,27 +260,21 @@ function GitHubUpdater:updateAll(repo, driverFilenames, includePrereleases, forc
             ) .. "\0"
             client:Write(c4soap)
           end
-          -- Close only once everything is sent: closing right after the last
-          -- Write can drop it, and the last one is this driver's own update.
-          -- Every Write is confirmed by OnWrite; a timer closes it regardless.
+          -- Keep the socket open while the controller carries the requests
+          -- out, one after another: a written request is not yet a done one,
+          -- and the last is this driver's own update.
           closeWhenSent = function()
             if not closed then
               closed = true
               client:Close()
             end
           end
-          if written >= #updateOrder then
-            closeWhenSent()
-          else
-            delay(UPDATE_SOCKET_CLOSE_MS):next(closeWhenSent)
-          end
+          delay(UPDATE_SOCKET_CLOSE_MS):next(closeWhenSent)
           d:resolve(downloadedDriverFilenames)
         end)
         :OnWrite(function()
           written = written + 1
-          if written >= #updateOrder and closeWhenSent then
-            closeWhenSent()
-          end
+          log:debug("Update request %d of %d sent", written, #updateOrder)
         end)
         :OnError(function(client, errCode, errMsg)
           client:Close()

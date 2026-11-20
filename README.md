@@ -455,6 +455,19 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112106 - 2026-11-21
+
+### Fixed
+
+- MQTT Broker: Update Drivers updated the other drivers but not the broker
+  itself ("Update to v2026112105 FAILED: cp_mqtt_broker.c4z is on 2026112104").
+  The broker closed its connection to the controller once its update requests
+  were written, while the controller was still carrying them out one by one; the
+  last, the broker's own, was dropped. The connection now stays open (up to 3
+  minutes; the broker's own update restarts it). The broker installed before
+  this version still has the old behaviour, so install this broker once by hand
+  (Composer: Driver, Add or Update Driver or Agent).
+
 ## v2026112105 - 2026-11-21
 
 ### Fixed
