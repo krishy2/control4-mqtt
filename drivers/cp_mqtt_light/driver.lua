@@ -501,6 +501,9 @@ function OnDriverInit()
     onSettingsChanged = function(settings)
       persist:set(SETTINGS_PERSIST_KEY, settings)
     end,
+    requestState = function(reason)
+      requestState(reason)
+    end,
   })
   light:loadSettings(persist:get(SETTINGS_PERSIST_KEY, {}) or {})
 

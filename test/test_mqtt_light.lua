@@ -1740,4 +1740,69 @@ for _, m in ipairs(zbOut) do
 end
 T.eq("turned on during the fade off: the Off does not go out", offSent, false)
 
+-------------------------------------------------------------------------------
+T.section("Zigbee: a level the bulb does not report is read")
+-------------------------------------------------------------------------------
+-- spot1 took a scene's 2% but never reported it; Control4 kept 15% and the
+-- scene stayed inactive. Asked, the gateway answers Power, Dimmer and CT.
+reset()
+clock = 0
+local asked = {}
+light = MqttLight.new({
+  proxyBinding = PROXY,
+  brokerBinding = BROKER,
+  now = function()
+    return clock
+  end,
+  requestState = function(reason)
+    asked[#asked + 1] = reason
+  end,
+})
+light:configure({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "Auto",
+  stateOn = "1",
+  stateOff = "0",
+  payloadOn = "1",
+  payloadOff = "0",
+  brightnessMax = 254,
+  fadeMode = MqttLight.FADE_JUMP,
+  topics = {
+    power = {
+      stateTopic = "z/s",
+      valuePath = "$.ZbReceived['0xE53A'].Power",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = '{"Device":"spot1","Send":{"Power":{value}}}',
+    },
+    brightness = {
+      stateTopic = "z/s",
+      valuePath = "$.ZbReceived['0xE53A'].Dimmer",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = '{"Device":"spot1","Send":"0008!04/{hex8}{time16}"}',
+    },
+  },
+})
+light:onMessage("z/s", '{"ZbReceived":{"0xE53A":{"Power":1,"Dimmer":15}}}')
+ShimFireTimers()
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "2", RATE = "750" })
+light:flush()
+clock = 750
+ShimFireTimers() -- the fade ends
+clock = 2750
+ShimFireTimers() -- the settle time ends
+T.eq("no report of the new level: the light is asked once", #asked, 1)
+T.eq("Control4 is not told the old level meanwhile", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
+light:onMessage("z/s", '{"ZbReceived":{"0xE53A":{"Power":1,"Dimmer":2}}}')
+T.eq("the answer is told", last(notifies("LIGHT_BRIGHTNESS_CHANGED")).LIGHT_BRIGHTNESS_CURRENT, 2)
+
+asked = {}
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
+light:flush()
+light:onMessage("z/s", '{"ZbReceived":{"0xE53A":{"Power":1,"Dimmer":15}}}')
+clock = 6000
+ShimFireTimers()
+T.eq("a reported level is not asked for", #asked, 0)
+
 T.finish()

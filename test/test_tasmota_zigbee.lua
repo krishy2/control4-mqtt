@@ -153,11 +153,25 @@ T.eq("a dimmer is turned off with Power (level 0 made a TS0502B flash when next 
   props["Power Command Payload"],
   props["Power State Topic"],
 }, { "cmnd/zigbee/ZbSend", '{"Device":"0xA4C13837E8E485BF","Send":{"Power":{value}}}', "tele/zigbee/E53A/SENSOR" })
+T.eq("the state request reads On/Off, level and color temperature through Backlog", {
+  props["State Request Topic"],
+  props["State Request Payload"],
+}, {
+  "cmnd/zigbee/Backlog",
+  'ZbSend {"Device":"0xA4C13837E8E485BF","Cluster":"0x0006","Read":"0x0000"}; '
+    .. 'ZbSend {"Device":"0xA4C13837E8E485BF","Cluster":"0x0008","Read":"0x0000"}; '
+    .. 'ZbSend {"Device":"0xA4C13837E8E485BF","Cluster":"0x0300","Read":"0x0007"}',
+})
 local switchProps = Zigbee.lightProperties(unnamed, "light", 0)
 T.eq(
   "a switch uses Power",
   switchProps["Power Command Payload"],
   '{"Device":"0xA4C138D18EDA3FF5","Send":{"Power":{value}}}'
+)
+T.eq(
+  "a switch reads On/Off only",
+  switchProps["State Request Payload"],
+  'ZbSend {"Device":"0xA4C138D18EDA3FF5","Cluster":"0x0006","Read":"0x0000"}'
 )
 T.eq("color temperature", { props["Color Temp Value Path"], props["Color Temp Unit"] }, {
   "$.ZbReceived['0xE53A'].CT",

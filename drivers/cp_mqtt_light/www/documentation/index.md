@@ -270,7 +270,10 @@ For example `zigbee2mqtt/Kitchen` and `zigbee2mqtt/Kitchen/set`.
 Optional. A message that asks the device for its full state. It is sent when the
 broker connects and whenever the device comes back online (see
 [Availability Settings](#availability-settings)), so the light shows the right
-state after a controller restart instead of unknown. For Tasmota use
+state after a controller restart instead of unknown. With Fade: Jump to Target
+it is also sent once when a command's level is not confirmed by a report within
+the fade time plus 2 seconds (some Zigbee bulbs do not report every change);
+Control4 is told the level the answer gives. For Tasmota use
 `cmnd/<topic>/STATE` with an empty payload: the answer arrives on
 `stat/<topic>/RESULT`.
 
@@ -570,6 +573,8 @@ bridge (topic `zigbee`) as `spot1` with short address `0xE53A`, and
 | Power Command Topic        | `cmnd/zigbee/ZbSend`                                  |
 | Power Command Payload      | `{"Device":"spot1","Send":{"Power":{value}}}`         |
 | Payload On / Payload Off   | `1` / `0`                                             |
+| State Request Topic        | `cmnd/zigbee/Backlog`                                 |
+| State Request Payload      | reads of On/Off, level and color temperature (below)  |
 | State On / State Off       | `1` / `0`                                             |
 | Brightness State Topic     | `tele/zigbee/E53A/SENSOR`                             |
 | Brightness Value Path      | `$.ZbReceived['0xE53A'].Dimmer`                       |
@@ -592,6 +597,17 @@ level, then Power off when the fade ends. Turning on with a level sends no
 Power. A plain switch uses only the Power command. To check a bulb fades, run
 `ZbSend {"Device":"spot1","Send":"0008!04/FE1E00"}` on the gateway: it should go
 to full over 3 seconds.
+
+The State Request Payload reads the three values, one cluster per `ZbSend`
+(one line):
+
+```
+ZbSend {"Device":"spot1","Cluster":"0x0006","Read":"0x0000"}; ZbSend {"Device":"spot1","Cluster":"0x0008","Read":"0x0000"}; ZbSend {"Device":"spot1","Cluster":"0x0300","Read":"0x0007"}
+```
+
+The gateway answers with one message on the state topic (`Power`, `Dimmer`,
+`CT`). A TS0502B sometimes takes a level without reporting it; the driver then
+reads it, so Control4 (and an Advanced Lighting Scene) sees the real level.
 
 Why off is not level 0: a TS0502B turned off with level 0 flashed and went off
 again the next time it was turned on, whatever came after. Turned off with

@@ -448,6 +448,26 @@ end
 
 --- MQTT Light properties for the device.
 --- @return table|nil props, string|nil error
+--- Backlog payload reading a light's On/Off, and its level and color
+--- temperature when it has them.
+--- @param device string the device's IEEE address or name
+--- @param load table { dimmer, ct }
+--- @return string
+function Zigbee.readPayload(device, load)
+  local reads = { { "0x0006", "0x0000" } }
+  if load.dimmer then
+    reads[#reads + 1] = { "0x0008", "0x0000" }
+  end
+  if load.ct then
+    reads[#reads + 1] = { "0x0300", "0x0007" }
+  end
+  local parts = {}
+  for _, r in ipairs(reads) do
+    parts[#parts + 1] = string.format('ZbSend {"Device":"%s","Cluster":"%s","Read":"%s"}', device, r[1], r[2])
+  end
+  return table.concat(parts, "; ")
+end
+
 function Zigbee.lightProperties(dev, loadId, chosen)
   local load = Zigbee.load(dev, loadId, chosen)
   if load == nil then
@@ -475,9 +495,10 @@ function Zigbee.lightProperties(dev, loadId, chosen)
   end
   local props = {
     ["Payload Mode"] = "Separate Topics",
-    -- Reading On/Off: the answer arrives as ZbReceived on the state topic.
-    ["State Request Topic"] = send,
-    ["State Request Payload"] = string.format('{"Device":"%s","Cluster":"0x0006","Read":"0x0000"}', dev.ieee),
+    -- Reading On/Off, level and color temperature (one cluster per ZbSend, so
+    -- through Backlog): the answers arrive as one ZbReceived on the state topic.
+    ["State Request Topic"] = Tasmota.topicFor(gw, 1, "Backlog"),
+    ["State Request Payload"] = Zigbee.readPayload(dev.ieee, load),
     ["Availability Topic"] = Tasmota.topicFor(gw, 3, "LWT"),
     ["Availability Value Path"] = "",
     ["Payload Available"] = gw.online or "Online",

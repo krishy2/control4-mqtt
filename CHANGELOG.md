@@ -18,6 +18,20 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112108 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: an Advanced Lighting Scene with Zigbee spots stayed Inactive
+  although every spot reached its level. A TS0502B sometimes takes a new level
+  without reporting it (spot1 went to 2% and reported only its color), so
+  Control4 kept the old level. When a level is not confirmed within the fade
+  time plus 2 seconds, the light now asks the device once (State Request) and
+  tells Control4 the answer. Zigbee lights' State Request now reads On/Off,
+  level and color temperature in one go (`cmnd/zigbee/Backlog`, one `ZbSend`
+  read per cluster); lights set up from a discovered Zigbee device pick it up
+  by themselves after the update.
+
 ## v2026112107 - 2026-11-21
 
 ### Fixed

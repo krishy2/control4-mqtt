@@ -190,7 +190,7 @@ end
 -------------------------------------------------------------------------------
 
 --- Create a light.
---- @param opts table { proxyBinding, brokerBinding, now?, onStateChanged?, onSettingsChanged? }
+--- @param opts table { proxyBinding, brokerBinding, now?, onStateChanged?, onSettingsChanged?, requestState? }
 --- @return table
 function MqttLight.new(opts)
   local self = setmetatable({}, MqttLight)
@@ -199,6 +199,8 @@ function MqttLight.new(opts)
   self.now = opts.now or nowMs
   self.onStateChanged = opts.onStateChanged
   self.onSettingsChanged = opts.onSettingsChanged
+  -- Asks the device for its state (the driver's State Request); nil: none.
+  self.requestState = opts.requestState
   self.timerPrefix = opts.timerPrefix or "MqttLight"
   self.cfg = {}
   self.caps = {}
@@ -1707,14 +1709,25 @@ function MqttLight:_expect(level, rate)
   local wait = math.max(0, tonumber(rate) or 0) + SETTLE_MS
   local settle = { level = level, untilT = self.now() + wait }
   self.settle = settle
-  SetTimer(self:_timer("Settle"), wait, function()
+  local function settled()
     if self.settle ~= settle then
+      return
+    end
+    -- Not confirmed: a Zigbee bulb (TS0502B) does not always report its new
+    -- level by itself. Ask it once, and wait for the answer.
+    local now = self:deviceLevel()
+    if not settle.asked and self.requestState ~= nil and (now == nil or round(now) ~= round(settle.level)) then
+      settle.asked = true
+      settle.untilT = self.now() + SETTLE_MS
+      self.requestState("level " .. tostring(round(settle.level)) .. " not confirmed")
+      SetTimer(self:_timer("Settle"), SETTLE_MS, settled)
       return
     end
     -- Settle time over: report what the light says now, if it differs.
     self.settle = nil
     self:_syncFromDevice(false)
-  end)
+  end
+  SetTimer(self:_timer("Settle"), wait, settled)
 end
 
 --- Whether emulated fades jump straight to the target.
