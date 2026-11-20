@@ -1608,4 +1608,77 @@ end
 local d65 = Color.xyToCct(0.3127, 0.329)
 T.check("a white off the line (D65) reads about 6500 K, as before", math.abs(d65 - 6504) < 5, tostring(d65))
 
+-------------------------------------------------------------------------------
+T.section("Zigbee: turning on from off, color temperature after the fade")
+-------------------------------------------------------------------------------
+-- A TS0502B fading on from off switched itself off again when the color
+-- temperature command came before or 250 ms into the fade; one second after a
+-- 0.8 s fade it stayed on.
+reset()
+clock = 0
+light = newLight({
+  mode = MqttLight.MODE_TOPICS,
+  optimistic = "Auto",
+  stateOn = "1",
+  stateOff = "0",
+  brightnessMax = 254,
+  colorTempUnit = "Mireds",
+  colorTempMin = 2000,
+  colorTempMax = 6500,
+  fadeMode = MqttLight.FADE_JUMP,
+  topics = {
+    power = { stateTopic = "z/s", valuePath = "$.ZbReceived['0x351F'].Power" },
+    brightness = {
+      stateTopic = "z/s",
+      valuePath = "$.ZbReceived['0x351F'].Dimmer",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = '{"Device":"spot2","Send":"0008!04/{hex8}{time16}"}',
+    },
+    colorTemp = {
+      stateTopic = "z/s",
+      valuePath = "$.ZbReceived['0x351F'].CT",
+      commandTopic = "cmnd/zigbee/ZbSend",
+      commandTemplate = '{"Device":"spot2","Send":"0300!0A/{hex16}{time16}"}',
+    },
+  },
+})
+light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":0,"Dimmer":1,"CT":250}}}')
+ShimFireTimers()
+local delays = {}
+local realSetTimer2 = SetTimer
+SetTimer = function(name, delay, ...)
+  if tostring(name):find("ColorAfterLevel", 1, true) then
+    delays[#delays + 1] = delay
+  end
+  return realSetTimer2(name, delay, ...)
+end
+local wx2, wy2 = Color.cctToXy(2240)
+reset()
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(wx2),
+  LIGHT_COLOR_TARGET_Y = tostring(wy2),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
+light:flush()
+T.eq("from off: brightness first", published("cmnd/zigbee/ZbSend"), { '{"Device":"spot2","Send":"0008!04/260800"}' })
+T.eq("color temperature after the 750 ms fade and 250 ms", delays[1], 1000)
+ShimFireTimers()
+light:onMessage("z/s", '{"ZbReceived":{"0x351F":{"Power":1,"Dimmer":38,"CT":446}}}')
+ShimFireTimers()
+reset()
+delays = {}
+local cx2, cy2 = Color.cctToXy(4000)
+light:handleProxyCommand("SET_COLOR_TARGET", {
+  LIGHT_COLOR_TARGET_X = tostring(cx2),
+  LIGHT_COLOR_TARGET_Y = tostring(cy2),
+  LIGHT_COLOR_TARGET_MODE = "1",
+  LIGHT_COLOR_TARGET_RATE = "0",
+})
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "60", RATE = "750" })
+light:flush()
+T.eq("already on: color temperature 250 ms after the brightness", delays[1], 250)
+SetTimer = realSetTimer2
+
 T.finish()

@@ -1483,7 +1483,15 @@ function MqttLight:_send(cmd)
   end
 
   if colorLater ~= nil then
-    SetTimer(self:_timer("ColorAfterLevel"), COLOR_AFTER_LEVEL_MS, function()
+    -- Turning on from off, the color waits for the fade on to finish: the same
+    -- bulb switches itself off again when a color temperature command comes
+    -- before or during it (tested: color first, or 250 ms in, both flash and
+    -- go off; one second after a 0.8 s fade, it stays on).
+    local wait = COLOR_AFTER_LEVEL_MS
+    if cmd.power == true then
+      wait = wait + math.max(0, tonumber(cmd.rate) or 0)
+    end
+    SetTimer(self:_timer("ColorAfterLevel"), wait, function()
       send("colorTemp", colorLater)
     end)
   end

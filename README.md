@@ -455,6 +455,18 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112103 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: a Zigbee light (TS0502B) turned on from off by a scene with a
+  color sometimes flashed and stayed off. Console tests on spot2 from off:
+  brightness with color temperature 250 ms in, or color temperature first, both
+  flashed and switched off; color temperature one second after the 0.8 s fade
+  stayed on. Turning on from off, the color temperature now follows once the
+  fade on has finished (fade time plus 250 ms); a light already on keeps the 250
+  ms order.
+
 ## v2026112102 - 2026-11-21
 
 ### Fixed
