@@ -336,6 +336,10 @@ For example `brightness`.
 Device value for 100%: `100` for Tasmota, `254` for Zigbee2MQTT, `255` for many
 others.
 
+With `254` (Zigbee) the scale is split for fine control at the bottom: device
+values 0-15 are 0-15%, one to one, and 16-254 are spread over 16-100% (50% is
+112). Every level converts to a device value and back to the same level.
+
 #### Color Temperature
 
 ##### Color Temp State Topic / Color Temp Value Path / Color Temp Command Topic

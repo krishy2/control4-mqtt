@@ -390,7 +390,7 @@
         <minimum>1</minimum>
         <maximum>65535</maximum>
         <default>100</default>
-        <description>Device value for 100% brightness (100 for Tasmota, 254 for Zigbee2MQTT, 255 for many others)</description>
+        <description>Device value for 100% brightness (100 for Tasmota, 254 for Zigbee2MQTT, 255 for many others). With 254 the scale is split: 0-15 is 0-15%, 16-254 is 16-100%.</description>
       </property>
       <!-- Color Temperature -->
       <property>

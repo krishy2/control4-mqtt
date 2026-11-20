@@ -18,6 +18,15 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112104 - 2026-11-21
+
+### Changed
+
+- MQTT Light: a 0-254 brightness scale (Zigbee) is split for fine control at the
+  bottom: device values 0-15 are 0-15% one to one, and 16-254 are spread over
+  16-100% (50% is 112, was 127). Levels below 100% are darker than before, most
+  at the bottom (15% is 15, was 38), so scene levels may need adjusting.
+
 ## v2026112103 - 2026-11-21
 
 ### Fixed
