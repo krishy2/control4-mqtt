@@ -1805,4 +1805,128 @@ clock = 6000
 ShimFireTimers()
 T.eq("a reported level is not asked for", #asked, 0)
 
+-------------------------------------------------------------------------------
+T.section("Zigbee: colors, fades and offs that cross")
+-------------------------------------------------------------------------------
+local function zigbeeLight(opts)
+  local l = MqttLight.new({
+    proxyBinding = PROXY,
+    brokerBinding = BROKER,
+    now = function()
+      return clock
+    end,
+    requestState = opts and opts.requestState,
+  })
+  l:configure({
+    mode = MqttLight.MODE_TOPICS,
+    optimistic = "Auto",
+    stateOn = "1",
+    stateOff = "0",
+    payloadOn = "1",
+    payloadOff = "0",
+    brightnessMax = 254,
+    colorTempUnit = "Mireds",
+    colorTempMin = 2000,
+    colorTempMax = 6500,
+    fadeMode = MqttLight.FADE_JUMP,
+    topics = {
+      power = { stateTopic = "zz", valuePath = "$.Z.Power", commandTopic = "zc", commandTemplate = '{"Power":{value}}' },
+      brightness = {
+        stateTopic = "zz",
+        valuePath = "$.Z.Dimmer",
+        commandTopic = "zc",
+        commandTemplate = "0008!04/{hex8}{time16}",
+      },
+      colorTemp = {
+        stateTopic = "zz",
+        valuePath = "$.Z.CT",
+        commandTopic = "zc",
+        commandTemplate = "0300!0A/{hex16}{time16}",
+      },
+    },
+  })
+  l:onMessage("zz", '{"Z":{"Power":1,"Dimmer":15,"CT":447}}')
+  ShimFireTimers()
+  return l
+end
+local x4k, y4k = Color.cctToXy(4000)
+local function colorTo4000(l, rate)
+  l:handleProxyCommand("SET_COLOR_TARGET", {
+    LIGHT_COLOR_TARGET_X = tostring(x4k),
+    LIGHT_COLOR_TARGET_Y = tostring(y4k),
+    LIGHT_COLOR_TARGET_MODE = "1",
+    LIGHT_COLOR_TARGET_RATE = tostring(rate),
+  })
+  l:flush()
+end
+local function has(list, payload)
+  for _, p in ipairs(list) do
+    if p == payload then
+      return true
+    end
+  end
+  return false
+end
+
+-- A color during a fade off: the Off still goes out, the color waits for the next On.
+clock = 0
+light = zigbeeLight()
+reset()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "3000" })
+light:flush()
+colorTo4000(light, 0)
+ShimFireTimers()
+local zc = published("zc")
+T.eq("a color during a fade off: the Off still goes out", has(zc, '{"Power":0}'), true)
+T.eq("and the color is not sent to the light on its way off", has(zc, "0300!0A/FA000000"), false)
+T.eq(
+  "Control4 is told the color at once",
+  last(notifies("LIGHT_COLOR_CHANGED")).LIGHT_COLOR_CURRENT_X,
+  Color.roundTo(x4k, 4)
+)
+light:onMessage("zz", '{"Z":{"Power":0}}')
+ShimFireTimers()
+reset()
+light:handleProxyCommand("ON", {})
+light:flush()
+ShimFireTimers()
+T.eq("the next On brings the color", has(published("zc"), "0300!0A/FA000000"), true)
+
+-- Same level, new color over 750 ms: the color fades too; no "changing 15 to 15".
+clock = 0
+light = zigbeeLight()
+reset()
+colorTo4000(light, 750)
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "15", RATE = "750" })
+light:flush()
+ShimFireTimers()
+T.eq("same level, new color: the color takes the fade time", has(published("zc"), "0300!0A/FA000800"), true)
+T.eq("Control4 is not told the level is changing", #notifies("LIGHT_BRIGHTNESS_CHANGING"), 0)
+
+-- On with a color, then off at once: the color waiting for the On is dropped.
+clock = 0
+light = zigbeeLight()
+light:onMessage("zz", '{"Z":{"Power":0}}')
+ShimFireTimers()
+reset()
+colorTo4000(light, 0)
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "50", RATE = "0" })
+light:flush()
+light:handleProxyCommand("SET_BRIGHTNESS_TARGET", { LIGHT_BRIGHTNESS_TARGET = "0", RATE = "0" })
+light:flush()
+ShimFireTimers()
+zc = published("zc")
+T.eq("on then off at once: the last command is the Off", zc[#zc], '{"Power":0}')
+T.eq("and no color follows it", has(zc, "0300!0A/FA000000"), false)
+
+-- Reading messages again (new settings) keeps what Control4 was told.
+clock = 0
+light = zigbeeLight()
+reset()
+light:resetDevice()
+light:onMessage("zz", '{"Z":{"CT":447}}') -- the last message, color only
+ShimFireTimers()
+T.eq("a partial replay leaves the level as told", light.level, 15)
+T.eq("and tells Control4 nothing new", #notifies("LIGHT_BRIGHTNESS_CHANGED"), 0)
+
 T.finish()

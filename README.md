@@ -455,6 +455,25 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112109 - 2026-11-21
+
+### Fixed
+
+- MQTT Light: a color sent while a Zigbee light faded off (for example by the
+  Daylight Agent) cancelled the Off, leaving the light on at its lowest level. A
+  light on its way off now keeps the color for its next On, and only a
+  brightness or power command replaces the waiting Off.
+- MQTT Light: a scene step that kept the level and changed the color made the
+  color jump on lights that fade themselves; the color now takes the step's fade
+  time. Control4 is no longer told a level is changing when it stays.
+- MQTT Light: turning a light off right after turning it on no longer sends the
+  color that was waiting to follow the On.
+- MQTT Light: each broker connect re-applied the discovered device and rebuilt
+  the light from the last message, often a Zigbee light's color alone, leaving
+  its level unknown for a moment and stopping a running scene. Unchanged
+  settings are now left alone; changed ones re-read the device's messages
+  without forgetting what Control4 was told.
+
 ## v2026112108 - 2026-11-21
 
 ### Fixed

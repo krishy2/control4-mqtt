@@ -212,20 +212,9 @@ function MqttLight.new(opts)
   return self
 end
 
---- Forget everything the device has reported.
+--- Forget everything the device has reported and what Control4 was told.
 function MqttLight:resetState()
-  -- What the device reported (or what we assume when optimistic)
-  self.device = {
-    power = nil, -- boolean
-    brightness = nil, -- 0-100
-    colorBrightness = nil, -- 0-100, from a color format that carries brightness
-    kelvin = nil,
-    white = nil, -- 0-100
-    color = nil, -- { x, y }
-    mode = nil, -- COLOR_MODE_*
-  }
-  -- Shelly: the component status so far (NotifyStatus sends only what changed)
-  self.shellyStatus = {}
+  self:resetDevice()
   -- What was last reported to the proxy
   self.level = nil
   self.color = nil -- { x, y, mode }
@@ -244,6 +233,25 @@ function MqttLight:resetState()
   -- Advanced Lighting Scenes: the scene whose steps are running
   self.sceneRun = nil
   self.sceneRamping = false
+end
+
+--- Forget only what the device reported, to read its messages again (new
+--- settings). What Control4 was told, a running scene and a pending color
+--- stay: a message replayed in part (a Zigbee light's last report, often the
+--- color alone) must not leave the light unknown.
+function MqttLight:resetDevice()
+  -- What the device reported (or what we assume when optimistic)
+  self.device = {
+    power = nil, -- boolean
+    brightness = nil, -- 0-100
+    colorBrightness = nil, -- 0-100, from a color format that carries brightness
+    kelvin = nil,
+    white = nil, -- 0-100
+    color = nil, -- { x, y }
+    mode = nil, -- COLOR_MODE_*
+  }
+  -- Shelly: the component status so far (NotifyStatus sends only what changed)
+  self.shellyStatus = {}
 end
 
 --- Apply a new configuration and recompute capabilities.
@@ -1452,8 +1460,11 @@ function MqttLight:_send(cmd)
   if cmd.color ~= nil then
     CancelTimer(self:_timer("ColorAfterLevel"))
   end
-  -- A newer command replaces an Off still waiting for its fade down.
-  CancelTimer(self:_timer("OffAfterFade"))
+  -- A newer brightness or power command replaces an Off still waiting for its
+  -- fade down; a color alone does not (the light is on its way off).
+  if cmd.level ~= nil or cmd.power ~= nil then
+    CancelTimer(self:_timer("OffAfterFade"))
+  end
 
   -- Brightness commands that carry the fade time switch the light too (Zigbee
   -- Move to Level with On/Off), but off goes out as Power: a two-channel
@@ -1468,6 +1479,8 @@ function MqttLight:_send(cmd)
   end
 
   if turningOff then
+    -- A color still waiting to follow a turn on must not reach a light off.
+    CancelTimer(self:_timer("ColorAfterLevel"))
     local rate = math.max(0, tonumber(cmd.rate) or 0)
     if levelSwitches and cmdTopic("power") ~= "" and rate > 0 and self.device.power ~= false then
       send("brightness", 1)
@@ -1810,7 +1823,7 @@ function MqttLight:rampTo(target, rate, color, hold, presets)
 
   local powerOn = (target > 0 and from <= 0) or nil
 
-  if self.caps.dimmer then
+  if self.caps.dimmer and from ~= target then
     self:_notify("LIGHT_BRIGHTNESS_CHANGING", {
       LIGHT_BRIGHTNESS_CURRENT = round(from),
       LIGHT_BRIGHTNESS_TARGET = round(target),
@@ -1822,7 +1835,10 @@ function MqttLight:rampTo(target, rate, color, hold, presets)
   end
 
   if rate <= 0 or from == target then
-    self:_execute({ power = powerOn, level = target, color = color })
+    -- The level stays: a color with it still takes the fade time (a light
+    -- that fades itself).
+    local colorRate = (color ~= nil and rate > 0 and self.caps.transition) and rate or nil
+    self:_execute({ power = powerOn, level = target, color = color, rate = colorRate })
     self:_expect(target, 0)
     if self:isOptimistic() then
       self:_reportLevel(target, true)
@@ -1970,10 +1986,19 @@ function MqttLight:flush()
   end
 end
 
+--- Whether the light is on its way off: a fade to off still running, or an
+--- off sent whose report has not arrived (Control4 still shows the old level).
+function MqttLight:_goingOff()
+  if self.ramp ~= nil then
+    return self.ramp.target <= 0
+  end
+  return self.settle ~= nil and self.settle.level <= 0
+end
+
 --- Change color without changing brightness.
 function MqttLight:setColor(color, rate, preset)
   rate = math.max(0, tonumber(rate) or 0)
-  local on = (self.level or 0) > 0 or (self.ramp ~= nil and self.ramp.target > 0)
+  local on = not self:_goingOff() and ((self.level or 0) > 0 or (self.ramp ~= nil and self.ramp.target > 0))
   self.colorPreset = preset
   self.askedColor = { x = color.x, y = color.y, mode = color.mode, holdUntil = self.now() + rate + SETTLE_MS }
   if not on then

@@ -353,7 +353,7 @@ local function applyConfig(force)
 
   -- Re-evaluate cached state with the new configuration
   if not IsEmpty(lastPayloads) then
-    light:resetState()
+    light:resetDevice()
     for topic, payload in pairs(lastPayloads) do
       light:onMessage(topic, payload)
     end
@@ -826,6 +826,7 @@ local function applyTasmotaDevice(dev)
   table.sort(changed)
   log:info("Applied %s device %s (%s): %d settings changed", kindName(dev), dev.topic, selection.load, #changed)
   setTasmotaNotes(table.concat(codec.notes(dev, chosen), " "))
+  local unchanged = #changed == 0
 
   if renamePending and renamePending.mac == selection.mac and renamePending.load == selection.load then
     renamePending = nil
@@ -835,6 +836,10 @@ local function applyTasmotaDevice(dev)
     end
   end
 
+  if unchanged then
+    -- The same settings again (each broker connect asks): nothing to redo.
+    return
+  end
   -- Availability has its own handler (events, subscription); then everything else.
   OnPropertyChanged("Availability Topic")
   OnPropertyChanged("Availability Value Path")
