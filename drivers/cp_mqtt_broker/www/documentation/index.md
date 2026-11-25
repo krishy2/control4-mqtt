@@ -52,8 +52,8 @@ The MQTT driver suite consists of seven drivers:
 
 1. Add the **MQTT Broker** driver and choose its mode
 1. Add one **MQTT Light** per MQTT light (Tasmota, Zigbee2MQTT, ESPHome, ...)
-1. Add one **MQTT Shutter** per shutter or blind (Tasmota, Shelly, Zigbee2MQTT,
-   ...)
+1. Add one **MQTT Shutter** per shutter or blind (Tasmota, Shelly, ESPSomfy-RTS,
+   Zigbee2MQTT, ...)
 1. Add one **MQTT Fan** per fan (Tasmota iFan, Zigbee2MQTT, Shelly relay, ...)
 1. Add one **MQTT Thermostat** per thermostat (Tasmota, TuyaMCU, ...)
 1. Add **MQTT General** for other MQTT devices: relays, contacts, buttons,
@@ -73,6 +73,7 @@ The MQTT driver suite consists of seven drivers:
   - [External Broker Setup](#external-broker-setup)
   - [Shelly Setup](#shelly-setup)
   - [Zigbee Gateway Setup](#zigbee-gateway-setup)
+  - [ESPSomfy-RTS Setup](#espsomfy-rts-setup)
   - [Driver Properties](#driver-properties)
   - [Driver Actions](#driver-actions)
   - [Programming](#programming)
@@ -99,6 +100,8 @@ The MQTT driver suite consists of seven drivers:
   their dimmer, CCT, RGB, RGBW and relay outputs, for the same list
 - **Zigbee discovery**: finds the lights paired to Tasmota Zigbee gateways, for
   the MQTT Light's list
+- **ESPSomfy-RTS discovery**: finds the Somfy RTS shades and groups of
+  ESPSomfy-RTS controllers, for the MQTT Shutter's list
 - Manages subscriptions for connected child drivers
 - Message caching for late-subscribing devices
 - Automatic updates of all MQTT drivers from GitHub
@@ -220,6 +223,36 @@ quality, fades) are in the MQTT Light documentation, under Zigbee
 Troubleshooting. Sensors, the IKEA STARKVIND and other non-light devices are not
 listed yet.
 
+## ESPSomfy-RTS Setup
+
+[ESPSomfy-RTS](https://github.com/rstrouse/ESPSomfy-RTS) controls Somfy RTS
+motors by radio from an ESP32. Its shades and groups are found in both modes and
+appear in the MQTT Shutter's Discovered Device list as, for example,
+`ESPSomfyRTS [somfy] Living Room`. In the controller's web page open **Settings
+→ Network → MQTT** and set:
+
+| Setting            | Value                                                                  |
+| ------------------ | ---------------------------------------------------------------------- |
+| Enable MQTT client | On                                                                     |
+| Protocol           | `MQTT` (not MQTTS)                                                     |
+| Host / Port        | Built-in: the controller's IP and `3883`; External: your broker        |
+| Username/Password  | Empty in Built-in mode; your broker's account in External mode         |
+| Root Topic         | Any of zero, one or two levels, for example `somfy` (empty also works) |
+| Publish Discovery  | Optional: Home Assistant discovery, not needed for Control4            |
+
+Save. The controller publishes every shade and group when it connects, retained,
+and they appear in [ESPSomfy Shades](#espsomfy-shades-read-only) a few seconds
+later. Names come from ESPSomfy: name the shades and groups there first. Set
+each shade's type (roller, blind, awning, shutter, drapery, ...) and tilt type
+in ESPSomfy too: the MQTT Shutter works out from them which way opens and
+whether it has slats.
+
+How it works: the driver reads `<root>/shades`, `<root>/groups` and each shade's
+`name`, `shadeType`, `tiltType` and `flipPosition` (and the controller's `host`
+and `ipAddress`). Dry contact shades are switches in ESPSomfy and are not
+listed. In External mode the driver subscribes to these topics for Root Topics
+of up to two levels.
+
 ## External Broker Setup
 
 1. Set **Broker Mode** to `External`.
@@ -279,6 +312,12 @@ How many Shelly Gen2+ devices the broker has found. See
 
 How many devices are paired to the Tasmota Zigbee gateways the broker has found.
 See [Zigbee Gateway Setup](#zigbee-gateway-setup). The list is kept when the
+controller restarts.
+
+#### ESPSomfy Shades (read-only)
+
+How many shades (and groups) the broker has found on ESPSomfy-RTS controllers.
+See [ESPSomfy-RTS Setup](#espsomfy-rts-setup). The list is kept when the
 controller restarts.
 
 #### Tasmota Devices (read-only)
@@ -413,6 +452,17 @@ after pairing, renaming (`ZbName`) or `ZbLight`. Run
 
 Clears the Zigbee list. Run [Find Zigbee Devices](#find-zigbee-devices) to read
 it again.
+
+### Print ESPSomfy Shades
+
+Prints every ESPSomfy-RTS controller found, with its Root Topic and address, and
+each shade and group: its id, name and type (`Roller Shade, tilt, flipped`).
+
+### Forget ESPSomfy Shades
+
+Clears the ESPSomfy list. A controller publishes its shades again when it
+reconnects to the broker (restart it, or run [Reconnect](#reconnect) in External
+mode).
 
 ### Update Drivers
 

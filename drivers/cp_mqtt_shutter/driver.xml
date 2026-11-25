@@ -123,7 +123,7 @@
       <property>
         <name>Discovered Device</name>
         <type>DYNAMIC_LIST</type>
-        <description>Pick a Tasmota shutter or Shelly cover found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
+        <description>Pick a Tasmota shutter, Shelly cover or ESPSomfy-RTS shade found by the MQTT Broker; every setting below is filled in and follows the device. (Manual) leaves the settings as typed.</description>
       </property>
       <property>
         <name>Device Notes</name>
@@ -309,6 +309,12 @@
         <description>Topic to send a position (0-100) to. Filling it in lets Control4 move the shutter to any level (Tasmota: cmnd/&lt;topic&gt;/ShutterPosition1)</description>
       </property>
       <property>
+        <name>Target State Topic</name>
+        <type>STRING</type>
+        <default/>
+        <description>Optional: topic reporting the position being moved to, when it has its own (ESPSomfy-RTS: shades/1/target). Empty: Target Value Path on the position state topic</description>
+      </property>
+      <property>
         <name>Target Value Path</name>
         <type>STRING</type>
         <default/>
@@ -325,6 +331,16 @@
         <type>STRING</type>
         <default/>
         <description>JSONPath to the movement: 1/-1/0, opening/closing/stopped or UP/DOWN/STOP (Tasmota: $.Shutter1.Direction)</description>
+      </property>
+      <property>
+        <name>Invert Movement</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>No</item>
+          <item>Yes</item>
+        </items>
+        <description>Yes when a numeric movement of -1 means opening and 1 closing (ESPSomfy-RTS); No for Tasmota (1 opening)</description>
       </property>
       <property>
         <name>Commands</name>
@@ -366,6 +382,16 @@
         <type>STRING</type>
         <default/>
         <description>Payload for Stop (JSON mode: default STOP)</description>
+      </property>
+      <property>
+        <name>Stop Only While Moving</name>
+        <type>LIST</type>
+        <default>No</default>
+        <items>
+          <item>No</item>
+          <item>Yes</item>
+        </items>
+        <description>Yes for Somfy shades: their My button stops a moving shade but sends an idle one to its favorite position, so Stop is sent only while it moves</description>
       </property>
       <property>
         <name>Tilt</name>

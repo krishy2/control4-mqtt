@@ -1,6 +1,7 @@
 --- MQTT Shutter Driver
 --- A Control4 blind driver for MQTT shutters and blinds: Tasmota shutters,
---- Shelly Gen2+ covers, or any device with MQTT position and command topics.
+--- Shelly Gen2+ covers, ESPSomfy-RTS shades, or any device with MQTT position
+--- and command topics.
 ---
 --- Connects to an MQTT broker through the MQTT Broker driver and controls one
 --- shutter's position, or its slats (Control: Tilt). The Control4 side follows
@@ -22,6 +23,7 @@ local MqttDevice = require("mqtt.entities.device")
 local Shutter = require("mqtt.shutter")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
+local ESPSomfy = require("mqtt.espsomfy")
 
 -- Binding IDs
 local BLIND_PROXY_BINDING = 5001
@@ -61,9 +63,12 @@ local CONFIG_PROPERTIES = {
   "Position State Topic",
   "Position Value Path",
   "Position Command Topic",
+  "Target State Topic",
   "Target Value Path",
   "Movement State Topic",
   "Movement Value Path",
+  "Invert Movement",
+  "Stop Only While Moving",
   "Open Command Topic",
   "Open Payload",
   "Close Command Topic",
@@ -113,6 +118,8 @@ local function buildConfig()
     travelTime = tonumber(prop("Travel Time (Seconds)")) or 20,
     tiltTime = tonumber(prop("Tilt Time (Seconds)")) or 2,
     invert = prop("Invert Position") == "Yes",
+    invertMovement = prop("Invert Movement") == "Yes",
+    stopOnlyWhileMoving = prop("Stop Only While Moving") == "Yes",
     tiltMin = tonumber(prop("Tilt Min")) or 0,
     tiltMax = tonumber(prop("Tilt Max")) or 100,
     payloadOpen = json and orDefault(prop("Open Payload"), "OPEN") or prop("Open Payload"),
@@ -126,7 +133,9 @@ local function buildConfig()
         commandTopic = prop("Position Command Topic"),
       },
       target = {
-        stateTopic = prop("Target Value Path") ~= "" and positionTopic or "",
+        -- Its own topic, or a value path on the position topic.
+        stateTopic = prop("Target State Topic") ~= "" and prop("Target State Topic")
+          or (prop("Target Value Path") ~= "" and positionTopic or ""),
         valuePath = prop("Target Value Path"),
       },
       state = { stateTopic = prop("Movement State Topic"), valuePath = prop("Movement Value Path") },
@@ -174,9 +183,12 @@ local function updatePropertyVisibility()
     ["Position State Topic"] = topics and not tilt,
     ["Position Value Path"] = topics and not tilt,
     ["Position Command Topic"] = topics and not tilt,
+    ["Target State Topic"] = topics and not tilt,
     ["Target Value Path"] = topics and not tilt,
     ["Movement State Topic"] = topics,
     ["Movement Value Path"] = topics,
+    ["Invert Movement"] = topics,
+    ["Stop Only While Moving"] = not shelly,
     ["Commands"] = not shelly,
     ["Open Command Topic"] = topics and not tilt,
     ["Open Payload"] = not shelly and not tilt,
@@ -605,7 +617,7 @@ for _, name in ipairs(CONFIG_PROPERTIES) do
 end
 
 -----------------------------------------------------------------------
--- Discovery (Tasmota and Shelly): pick a shutter, every setting follows
+-- Discovery (Tasmota, Shelly, ESPSomfy-RTS): pick a shutter, every setting follows
 -----------------------------------------------------------------------
 
 local function deviceId()
@@ -645,7 +657,12 @@ updateDiscoveredList = function()
 end
 
 local function codecFor(dev)
-  return dev.type == "shelly" and Shelly or Tasmota
+  if dev.type == "shelly" then
+    return Shelly
+  elseif dev.type == "espsomfy" then
+    return ESPSomfy
+  end
+  return Tasmota
 end
 
 local function renameAfterDevice(dev, id)
@@ -703,7 +720,11 @@ local function applyDiscoveredDevice(dev)
       info = s
     end
   end
-  if shutter:isTilt() and info and not info.tilt then
+  if dev.type == "espsomfy" then
+    for _, n in ipairs(ESPSomfy.notes(dev, selection.id, Properties["Control"])) do
+      notes[#notes + 1] = n
+    end
+  elseif shutter:isTilt() and info and not info.tilt then
     notes[#notes + 1] = dev.type == "shelly" and "Slat control is off on this Shelly cover; turn it on in its settings."
       or "Tilt is not set up on this Tasmota shutter (ShutterTiltConfig)."
   end
@@ -753,6 +774,14 @@ function OPC.Discovered_Device(propertyValue)
     renamePending = { mac = choice.mac, id = choice.id }
   end
   requestDiscoveredDevice(choice.mac)
+end
+
+--- Control (Position or Tilt) changes what the Device Notes say.
+function OPC.Control()
+  onConfigPropertyChanged()
+  if gInitialized and discoveredSelection ~= nil then
+    requestDiscoveredDevice(discoveredSelection.mac)
+  end
 end
 
 --- The broker's list of discovered devices: their shutters go in the dropdown.

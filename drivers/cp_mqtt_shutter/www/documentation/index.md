@@ -25,7 +25,8 @@ ______________________________________________________________________
 The MQTT Shutter driver makes one MQTT shutter, blind or awning a native
 Control4 blind: open, close, stop and move to a position from Navigators,
 keypads, scenes and programming. It works with Tasmota shutters, Shelly Gen2+
-covers and any device with MQTT position and command topics.
+covers, Somfy RTS shades through ESPSomfy-RTS, and any device with MQTT position
+and command topics.
 
 One driver controls the shutter's position. For a venetian blind, add a second
 MQTT Shutter driver with [Control](#control--position--tilt-) set to `Tilt` for
@@ -41,6 +42,7 @@ its slats.
   - [Driver Properties](#driver-properties)
   - [Example: Tasmota](#example-tasmota)
   - [Example: Shelly](#example-shelly)
+  - [Example: ESPSomfy-RTS](#example-espsomfy-rts)
   - [Example: Zigbee2MQTT](#example-zigbee2mqtt)
   - [Connections](#connections)
   - [Actions](#actions)
@@ -84,18 +86,22 @@ with `Online` / `Offline`. Shelly: `<prefix>/online` with `true` / `false`.
 
 #### Discovered Device
 
-The Tasmota shutters and Shelly covers the MQTT Broker driver has found, for
-example `Living Shutter [living_shutter] Shutter` or
-`Bedroom [shellyplus2pm-a8032ab12345] Bedroom Blind (tilt)`. `(tilt)` marks
-shutters with slats. Picking one fills in every setting and renames the driver
-after the device (with ` Slats` added when [Control](#control--position--tilt-)
-is `Tilt`). The shutter keeps following the device; choose `(Manual)` to stop.
+The Tasmota shutters, Shelly covers and ESPSomfy-RTS shades the MQTT Broker
+driver has found, for example `Living Shutter [living_shutter] Shutter`,
+`Bedroom [shellyplus2pm-a8032ab12345] Bedroom Blind (tilt)` or
+`ESPSomfyRTS [somfy] Living Room`. `(tilt)` marks shutters with slats. Picking
+one fills in every setting and renames the driver after the device (with
+` Slats` added when [Control](#control--position--tilt-) is `Tilt`). The shutter
+keeps following the device; choose `(Manual)` to stop.
 
 - Tasmota: a shutter is found when its relays are in shutter mode (`ShutterMode`
   / `ShutterRelay1`); tilt when `ShutterTiltConfig1` is set.
 - Shelly: a cover is found when the device is in cover profile; slats when slat
   control is on in the cover's settings. Positioning needs a calibrated cover;
   until then the shutter only opens and closes.
+- ESPSomfy-RTS: every shade but dry contacts, and every group (marked
+  `(group)`); tilt when the shade has a tilt type. See
+  [Example: ESPSomfy-RTS](#example-espsomfy-rts).
 
 #### Device Notes (read-only)
 
@@ -149,11 +155,17 @@ has finished.
   comes from.
 - **Position Command Topic** - where a position is sent. With it Control4 can
   move the shutter to any level; without it the shutter only opens and closes.
+- **Target State Topic** - optional, a topic of its own for the position being
+  moved to (ESPSomfy-RTS). Empty: the target comes from the position state
+  topic, with Target Value Path.
 - **Target Value Path** - optional, the position being moved to.
 - **Movement State Topic / Movement Value Path** - optional, whether it is
   moving: `1` / `-1` / `0` (Tasmota Direction), `opening` / `closing` /
   `stopped` / `open` / `closed`, or `UP` / `DOWN` / `STOP`. A device that
   reports only `open` / `closed` here works without a position topic.
+- **Invert Movement** \[ **_No_** | Yes \] - `Yes` when a number counts the
+  other way: `-1` opening and `1` closing (ESPSomfy-RTS). Words are not
+  affected.
 
 ### Commands
 
@@ -162,6 +174,11 @@ and fully closed use Open and Close (so the motor runs to its end stops); levels
 in between use the Position Command Topic. Stop appears in Control4 when a Stop
 Command Topic is filled in. In JSON mode the payloads are the **State Key**
 values (`OPEN`, `CLOSE`, `STOP` when empty).
+
+**Stop Only While Moving** \[ **_No_** | Yes \]: `Yes` sends Stop only while the
+shutter moves (as its Movement topic reports, or a move Control4 started). For
+Somfy shades: their Stop is the My button, which stops a moving shade but sends
+an idle one to its favorite position.
 
 ### Tilt
 
@@ -209,6 +226,48 @@ Pick the cover in [Discovered Device](#discovered-device), or set Payload Mode
 `slat_pos` for Tilt) to `<prefix>/rpc` and follows `NotifyStatus` on
 `<prefix>/events/rpc`. See the MQTT Broker documentation for the Shelly MQTT
 settings.
+
+## Example: ESPSomfy-RTS
+
+Pick the shade in [Discovered Device](#discovered-device); the MQTT Broker
+documentation says how to connect the ESPSomfy-RTS controller. The settings it
+fills in, for shade 1 of a roller shade with Root Topic `somfy`:
+
+| Property               | Value                                                |
+| ---------------------- | ---------------------------------------------------- |
+| Payload Mode           | Separate Topics                                      |
+| Position State Topic   | `somfy/shades/1/position`                            |
+| Position Command Topic | `somfy/shades/1/target/set`                          |
+| Target State Topic     | `somfy/shades/1/target`                              |
+| Movement State Topic   | `somfy/shades/1/direction`                           |
+| Invert Movement        | Yes                                                  |
+| Open / Close / Stop    | `somfy/shades/1/direction/set` with `-1` / `1` / `0` |
+| Stop Only While Moving | Yes                                                  |
+| Invert Position        | Yes                                                  |
+| Availability Topic     | `somfy/status` (`online` / `offline`)                |
+
+ESPSomfy counts positions from fully up (0) to fully down (100). Up opens every
+shade type but an awning, which opens going down; the driver sets Invert
+Position, Invert Movement and the Open and Close payloads from the shade's type
+and its **Flip Position** setting. Fully open and fully closed use Up and Down,
+so the motor runs to its end stops; positions in between use the target. Stop is
+the Somfy My button.
+
+- **Tilt**: a shade with a tilt type gets the Tilt topics
+  (`somfy/shades/1/tiltPosition`, `.../tiltTarget/set`, 0-100); add a second
+  MQTT Shutter with Control `Tilt`. A **tilt only** shade needs Control `Tilt`.
+  ESPSomfy flips the reported tilt with Flip Position but not the tilt it is
+  sent, so leave Flip Position off on tilting shades.
+- **Groups** take only Up, Down and My, and ESPSomfy does not report when a
+  group's shades arrive: the shutter opens and closes, without positions, and
+  counts a move as done after
+  [Travel Time](#travel-time-seconds--tilt-time-seconds), so set it to the
+  slowest shade's. Stop works during that time.
+- **One-button devices** (a garage door or gate with a single button) toggle
+  whatever they are sent.
+- The positions are ESPSomfy's estimate from the motor's travel times: set them
+  correctly in ESPSomfy. A Somfy remote's commands reach ESPSomfy too (when it
+  listens for that remote), so Control4 follows them.
 
 ## Example: Zigbee2MQTT
 

@@ -17,6 +17,7 @@ JSON = JSON or require("JSON")
 local Shutter = require("mqtt.shutter")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
+local ESPSomfy = require("mqtt.espsomfy")
 
 local sent = {}
 C4.SendToProxy = function(_, binding, command, params)
@@ -465,5 +466,80 @@ T.capture(function()
   OnPropertyChanged("Open Button LED When Open")
 end)
 T.eq("a new color goes out at once", last(take("BUTTON_COLORS", 300)).ON_COLOR, "00ff00")
+
+T.section("Driver: pick an ESPSomfy-RTS shade")
+local somfy = ESPSomfy.newDevice("somfy")
+for _, m in ipairs({
+  { "somfy/host", "ESPSomfyRTS" },
+  { "somfy/shades/2/name", "Kitchen Blind" },
+  { "somfy/shades/2/shadeType", "1" },
+  { "somfy/shades/2/tiltType", "2" },
+  { "somfy/shades/2/flipPosition", "false" },
+}) do
+  ESPSomfy.update(somfy, ESPSomfy.parseTopic(m[1]), m[2])
+end
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICES", {
+    devices = JSON:encode({ Tasmota.summary(dev), Shelly.summary(shelly), ESPSomfy.summary(somfy) }),
+  })
+end)
+local somfyLabel = "ESPSomfyRTS [somfy] Kitchen Blind (tilt)"
+T.contains("lists the ESPSomfy shade", lists["Discovered Device"].items, somfyLabel)
+Properties["Discovered Device"] = somfyLabel
+T.capture(function()
+  OnPropertyChanged("Discovered Device")
+end)
+T.eq("asks the broker for the controller", last(take("GET_TASMOTA_DEVICE")).mac, "espsomfy:somfy")
+sent = {}
+local somfyOk, somfyErr = T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "espsomfy:somfy", device = JSON:encode(somfy) })
+end)
+T.check("applies without error", somfyOk, somfyErr)
+T.eq("ESPSomfy settings", {
+  Properties["Position Command Topic"],
+  Properties["Target State Topic"],
+  Properties["Invert Position"],
+  Properties["Invert Movement"],
+  Properties["Stop Only While Moving"],
+  Properties["Availability Topic"],
+}, { "somfy/shades/2/target/set", "somfy/shades/2/target", "Yes", "Yes", "Yes", "somfy/status" })
+T.eq("renamed after the shade", last(ShimRenames()).name, "Kitchen Blind")
+sent = {}
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "somfy/shades/2/direction", payload = "0" })
+  ExecuteCommand("MQTT_MESSAGE", { topic = "somfy/shades/2/position", payload = "25" })
+end)
+T.eq("ESPSomfy 25 is 75% open", last(take("STOPPED", 5001)).LEVEL, 75)
+sent = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "STOP", {})
+end)
+T.eq("Stop while idle sends nothing", published(), {})
+T.capture(function()
+  ReceivedFromProxy(5001, "SET_LEVEL_TARGET", { LEVEL_TARGET = "40" })
+end)
+T.eq("Control4 moves it", published(), { "somfy/shades/2/target/set=60" })
+sent = {}
+T.capture(function()
+  ExecuteCommand("MQTT_MESSAGE", { topic = "somfy/shades/2/target", payload = "60" })
+  ExecuteCommand("MQTT_MESSAGE", { topic = "somfy/shades/2/direction", payload = "1" })
+  ReceivedFromProxy(5001, "STOP", {})
+end)
+T.eq("Stop while it moves sends My", published(), { "somfy/shades/2/direction/set=0" })
+Properties["Control"] = "Tilt"
+sent = {}
+T.capture(function()
+  OnPropertyChanged("Control")
+end)
+T.eq("changing Control reads the device again", last(take("GET_TASMOTA_DEVICE")).mac, "espsomfy:somfy")
+T.capture(function()
+  ExecuteCommand("TASMOTA_DEVICE", { mac = "espsomfy:somfy", device = JSON:encode(somfy) })
+end)
+T.eq("no note: the shade tilts", Properties["Device Notes"] or "", "")
+T.eq("tilt topics", Properties["Tilt Command Topic"], "somfy/shades/2/tiltTarget/set")
+Properties["Control"] = "Position"
+T.capture(function()
+  OnPropertyChanged("Control")
+end)
 
 T.finish()

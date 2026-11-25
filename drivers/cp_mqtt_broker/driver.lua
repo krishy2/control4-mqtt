@@ -31,6 +31,7 @@ local AutoBind = require("mqtt.autobind")
 local Tasmota = require("mqtt.tasmota")
 local Shelly = require("mqtt.shelly")
 local Zigbee = require("mqtt.tasmota_zigbee")
+local ESPSomfy = require("mqtt.espsomfy")
 local Broker = require("mqtt.server.broker")
 local C4Server = require("mqtt.server.c4_server")
 
@@ -84,6 +85,13 @@ local zigbeeGateways = {}
 local ownSubscriptions = {}
 --- Defined in the Zigbee section; used when the broker connects.
 local findZigbee
+local ESPSOMFY_PERSIST_KEY = "ESPSomfyDevices"
+--- ESPSomfy-RTS controllers, by key (ESPSomfy.key(root))
+local espsomfyDevices = {}
+--- Host names and addresses of roots with no shades yet: root -> { name, ip }
+local espsomfyPending = {}
+--- Controllers changed since the last notification: key -> true
+local espsomfyChanged = {}
 
 local EXTERNAL_PROPERTIES = { "Broker Settings", "Broker Address", "Port", "Username", "Password", "Keep Alive" }
 local BUILTIN_PROPERTIES = {
@@ -413,6 +421,89 @@ local function handleShelly(topic, payload)
 end
 
 -----------------------------------------------------------------------
+-- ESPSomfy-RTS discovery
+-----------------------------------------------------------------------
+
+local function espsomfyCountText()
+  local shades, groups = 0, 0
+  for _, dev in pairs(espsomfyDevices) do
+    local s, g = ESPSomfy.counts(dev)
+    shades, groups = shades + s, groups + g
+  end
+  if groups == 0 then
+    return tostring(shades)
+  end
+  return string.format("%d (and %d group%s)", shades, groups, groups == 1 and "" or "s")
+end
+
+local function updateESPSomfyProperty()
+  UpdateProperty("ESPSomfy Shades", espsomfyCountText())
+end
+
+--- Tell the drivers about changed controllers, once their messages have settled
+--- (a controller sends each attribute of each shade on its own).
+local function espsomfyChangedLater(key)
+  espsomfyChanged[key] = true
+  SetTimer("ESPSomfyChanged", 2 * ONE_SECOND, function()
+    local keys = espsomfyChanged
+    espsomfyChanged = {}
+    persist:defer(function()
+      persist:set(ESPSOMFY_PERSIST_KEY, espsomfyDevices)
+    end)
+    updateESPSomfyProperty()
+    for k in pairs(keys) do
+      local dev = espsomfyDevices[k]
+      if dev ~= nil then
+        local shades, groups = ESPSomfy.counts(dev)
+        log:info("ESPSomfy-RTS %s (%s): %d shades, %d groups", dev.name, dev.topic, shades, groups)
+      end
+      notifyChildDrivers("TASMOTA_DEVICES_CHANGED", { mac = k })
+    end
+  end)
+end
+
+--- Handle a message if it belongs to ESPSomfy-RTS discovery.
+--- @return boolean handled true for discovery topics
+local function handleESPSomfy(topic, payload)
+  local info = ESPSomfy.parseTopic(topic)
+  if info == nil then
+    return false
+  end
+  local ok, err = pcall(function()
+    local key = ESPSomfy.key(info.root)
+    local dev = espsomfyDevices[key]
+    if info.kind == "host" or info.kind == "ipAddress" then
+      if dev == nil then
+        -- Kept until the root turns out to have shades.
+        local pending = espsomfyPending[info.root] or {}
+        pending[info.kind] = payload
+        espsomfyPending[info.root] = pending
+        return
+      end
+    elseif dev == nil then
+      -- Id lists alone do not make a controller; a shade's or group's
+      -- attribute does (it is listed once a shade reports its type).
+      if info.kind ~= "shade" and info.kind ~= "group" then
+        return
+      end
+      dev = ESPSomfy.newDevice(info.root)
+      espsomfyDevices[key] = dev
+      for kind, value in pairs(espsomfyPending[info.root] or {}) do
+        ESPSomfy.update(dev, { kind = kind }, value)
+      end
+      espsomfyPending[info.root] = nil
+    end
+    if ESPSomfy.update(dev, info, payload) then
+      espsomfyChangedLater(key)
+    end
+  end)
+  if not ok then
+    log:error("ESPSomfy discovery from %s failed: %s", topic, err)
+  end
+  return true
+end
+
+-----------------------------------------------------------------------
 -- Zigbee devices behind Tasmota Zigbee gateways
 -----------------------------------------------------------------------
 
@@ -727,6 +818,7 @@ local function ensureBuiltIn()
       handleDiscovery(topic, payload)
       handleShelly(topic, payload)
       handleZigbee(topic, payload)
+      handleESPSomfy(topic, payload)
       local devices = subscriptions[topic]
       if IsEmpty(devices) then
         return
@@ -853,6 +945,10 @@ local function connectExternal()
       for _, filter in ipairs(Shelly.EXTERNAL_FILTERS) do
         MQTT:Subscribe(filter)
       end
+      -- ESPSomfy-RTS: shade lists and attributes (retained)
+      for _, filter in ipairs(ESPSomfy.EXTERNAL_FILTERS) do
+        MQTT:Subscribe(filter)
+      end
 
       -- Notify child drivers
       setConnected(true)
@@ -900,6 +996,7 @@ local function connectExternal()
     local discovery = handleDiscovery(topic, payload)
     discovery = handleShelly(topic, payload) or discovery
     discovery = handleZigbee(topic, payload) or discovery
+    discovery = handleESPSomfy(topic, payload) or discovery
     if discovery and IsEmpty(subscriptions[topic]) then
       return
     end
@@ -998,6 +1095,8 @@ function OnDriverInit()
     local ok, again = pcall(Zigbee.rebuild, z)
     zigbeeDevices[ieee] = ok and again or z
   end
+  persist:setWriteBehind(ESPSOMFY_PERSIST_KEY, 10 * ONE_SECOND)
+  espsomfyDevices = persist:get(ESPSOMFY_PERSIST_KEY, {}) or {}
 end
 
 function OnDriverLateInit()
@@ -1029,6 +1128,7 @@ function OnDriverLateInit()
   updateTasmotaProperty()
   updateShellyProperty()
   updateZigbeeProperty()
+  updateESPSomfyProperty()
   Connect()
   -- Catch devices whose online message was missed (e.g. deeper topic prefixes).
   SetTimer("FindShelliesPeriodic", 15 * ONE_MINUTE, function()
@@ -1366,6 +1466,16 @@ function RFP.GET_TASMOTA_DEVICES(idBinding, strCommand, tParams, args)
       end
     end
   end
+  -- ESPSomfy-RTS shades go to MQTT Shutter drivers only.
+  for _, id in ipairs(AutoBind.devices("cp_mqtt_shutter.c4z")) do
+    if id == deviceId then
+      for _, dev in pairs(espsomfyDevices) do
+        if #ESPSomfy.shutters(dev) > 0 then
+          list[#list + 1] = ESPSomfy.summary(dev)
+        end
+      end
+    end
+  end
   table.sort(list, function(a, b)
     return a.name:lower() .. a.topic < b.name:lower() .. b.topic
   end)
@@ -1380,7 +1490,7 @@ function RFP.GET_TASMOTA_DEVICE(idBinding, strCommand, tParams, args)
     log:warn("GET_TASMOTA_DEVICE needs device_id and mac")
     return
   end
-  local dev = tasmotaDevices[mac] or shellyDevices[mac] or zigbeeDevices[mac]
+  local dev = tasmotaDevices[mac] or shellyDevices[mac] or zigbeeDevices[mac] or espsomfyDevices[mac]
   SendToDevice(deviceId, "TASMOTA_DEVICE", { mac = mac, device = dev and JSON:encode(dev) or "" })
 end
 
@@ -1517,6 +1627,34 @@ function EC.ForgetZigbeeDevices()
 end
 
 -- Action: Reconnect (External) / Restart (Built-in)
+function EC.PrintESPSomfyShades()
+  local keys = {}
+  for k in pairs(espsomfyDevices) do
+    keys[#keys + 1] = k
+  end
+  table.sort(keys)
+  local lines = { string.format("==== %d ESPSomfy-RTS controllers ====", #keys) }
+  for _, k in ipairs(keys) do
+    local dev = espsomfyDevices[k]
+    lines[#lines + 1] = string.format("%s  root topic: %s  %s", dev.name, dev.topic, dev.ip or "")
+    for _, s in ipairs(ESPSomfy.shutters(dev)) do
+      local kind, n = s.id:match("^(%a+):(%d+)$")
+      local detail = kind == "shade" and ESPSomfy.describe(dev.shades[n]) or "group"
+      lines[#lines + 1] = string.format("    %-6s %-24s %s", s.id, s.label:sub(1, 24), detail)
+    end
+  end
+  print(table.concat(lines, "\n"))
+end
+
+function EC.ForgetESPSomfyShades()
+  espsomfyDevices = {}
+  espsomfyPending = {}
+  persist:set(ESPSOMFY_PERSIST_KEY, nil)
+  updateESPSomfyProperty()
+  notifyChildDrivers("TASMOTA_DEVICES_CHANGED", {})
+  log:print("Forgot every ESPSomfy-RTS controller; they come back as they publish again (reconnect the broker)")
+end
+
 function EC.Reconnect()
   log:trace("EC.Reconnect()")
   log:print(isBuiltIn() and "Restarting the built-in broker" or "Reconnecting to MQTT broker")

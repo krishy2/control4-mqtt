@@ -141,6 +141,13 @@
         <description>Zigbee devices paired to Tasmota Zigbee gateways (read with ZbStatus1 and ZbStatus3)</description>
       </property>
       <property>
+        <name>ESPSomfy Shades</name>
+        <type>STRING</type>
+        <default/>
+        <readonly>true</readonly>
+        <description>Shades and groups of ESPSomfy-RTS controllers found over MQTT</description>
+      </property>
+      <property>
         <name>Broker Settings</name>
         <type>LABEL</type>
         <default>Broker Settings</default>
@@ -284,6 +291,14 @@
       <action>
         <name>Forget Zigbee Devices</name>
         <command>ForgetZigbeeDevices</command>
+      </action>
+      <action>
+        <name>Print ESPSomfy Shades</name>
+        <command>PrintESPSomfyShades</command>
+      </action>
+      <action>
+        <name>Forget ESPSomfy Shades</name>
+        <command>ForgetESPSomfyShades</command>
       </action>
     </actions>
   </config>

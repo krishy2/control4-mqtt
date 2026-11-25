@@ -81,13 +81,17 @@ end
 --- A movement from a state value: Tasmota Direction (1 / -1 / 0), Home
 --- Assistant states (opening, closing, stopped, open, closed), Zigbee2MQTT
 --- moving (UP, DOWN, STOP) or Shelly cover states.
+--- @param invert? boolean numbers count the other way: -1 opening (ESPSomfy-RTS)
 --- @return string|nil OPENING, CLOSING or STOPPED
-function Shutter.parseMovement(value)
+function Shutter.parseMovement(value, invert)
   if value == nil then
     return nil
   end
   local n = tonumber(value)
   if n ~= nil then
+    if invert then
+      n = -n
+    end
     return n > 0 and Shutter.OPENING or (n < 0 and Shutter.CLOSING or Shutter.STOPPED)
   end
   local s = trim(value):lower()
@@ -394,6 +398,11 @@ function Shutter:_apply(u)
     log:info("Shutter positioning %s", self.caps.hasLevel and "available" or "not available (not calibrated?)")
     self:sendCapabilities()
   end
+  -- A target on its own (its own topic, sent before the movement) changes
+  -- nothing yet: weighed against the last movement it would end a move.
+  if u.movement == nil and u.position == nil and u.tilt == nil then
+    return
+  end
 
   local movement = d.movement
   if movement == Shutter.OPENING or movement == Shutter.CLOSING then
@@ -482,7 +491,7 @@ function Shutter:onMessage(topicName, payload)
       u.position = Shutter.parseEndpoint(state)
     end
     u.tilt = tonumber(feature("tilt"))
-    u.movement = Shutter.parseMovement(state)
+    u.movement = Shutter.parseMovement(state, self.cfg.invertMovement)
     u.target = tonumber(feature("target"))
   end
   if not handled then
@@ -737,7 +746,28 @@ function Shutter:close()
   end
 end
 
+--- Whether the shutter is moving: as the device reports it when it reports
+--- movement, else as far as Control4 knows.
+function Shutter:isMoving()
+  local m = self.device.movement
+  if m ~= nil then
+    return m == Shutter.OPENING or m == Shutter.CLOSING
+  end
+  return self.moving ~= nil
+end
+
 function Shutter:stop()
+  -- A Somfy My stops a moving shade but sends an idle one to its favorite
+  -- position: such devices get Stop only while they move.
+  if self.cfg.stopOnlyWhileMoving and not self:isMoving() then
+    log:debug("Not moving: Stop not sent")
+    if self.moving then
+      CancelTimer(self:_timer("Finish"))
+      self.moving = nil
+      self:_finish(self:deviceLevel() or self.level)
+    end
+    return
+  end
   if not self:_send("stop") then
     return
   end

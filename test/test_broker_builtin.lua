@@ -532,6 +532,79 @@ shellyDev:feed(Codec.publish(SP .. "/announce", shellyInfo(SP, "Living RGBW")))
 T.check("and reads each configuration again", find(shellyDev:take(), SP .. "/rpc") ~= nil)
 
 -------------------------------------------------------------------------------
+T.section("ESPSomfy-RTS discovery (built-in)")
+-------------------------------------------------------------------------------
+local somfyDev = accept(last(servers), "somfy")
+somfyDev:feed(Codec.connect({ clientId = "ESPSomfy", keepAlive = 30 }))
+proxyMsgs = {}
+-- As a controller publishes on connect, retained, root topic "somfy"
+for _, m in ipairs({
+  { "somfy/status", "online" },
+  { "somfy/ipAddress", "10.0.0.30" },
+  { "somfy/host", "ESPSomfyRTS" },
+  { "somfy/shades/1/name", "Living Room" },
+  { "somfy/shades/1/shadeType", "0" },
+  { "somfy/shades/1/tiltType", "0" },
+  { "somfy/shades/1/flipPosition", "false" },
+  { "somfy/shades/1/position", "100" },
+  { "somfy/shades", "[1]" },
+  { "somfy/groups/1/name", "All" },
+  { "somfy/groups", "[1]" },
+}) do
+  somfyDev:feed(Codec.publish(m[1], m[2], { retain = true }))
+end
+T.eq("children hear nothing until the messages settle", notifies("TASMOTA_DEVICES_CHANGED"), 0)
+ShimFireTimers()
+T.eq("then once", notifies("TASMOTA_DEVICES_CHANGED"), 1)
+T.eq("ESPSomfy Shades property", propertyWrites["ESPSomfy Shades"], "1 (and 1 group)")
+ShimSetDevices({ [303] = { deviceName = "MQTT Shutter", driverFileName = "cp_mqtt_shutter.c4z" } })
+deviceMsgs = {}
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICES", { device_id = "303" })
+end)
+local somfyEntry
+for _, d in ipairs(JSON:decode(last(deviceMsgs).params.devices)) do
+  if d.type == "espsomfy" then
+    somfyEntry = d
+  end
+end
+T.eq("a shutter's list has the controller", somfyEntry and { somfyEntry.name, somfyEntry.ip, #somfyEntry.shutters }, {
+  "ESPSomfyRTS",
+  "10.0.0.30",
+  2,
+})
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICES", { device_id = "101" })
+end)
+local lightHasSomfy = false
+for _, d in ipairs(JSON:decode(last(deviceMsgs).params.devices)) do
+  lightHasSomfy = lightHasSomfy or d.type == "espsomfy"
+end
+T.eq("a light's list does not", lightHasSomfy, false)
+T.capture(function()
+  ReceivedFromProxy(5001, "GET_TASMOTA_DEVICE", { device_id = "303", mac = "espsomfy:somfy" })
+end)
+local somfyFull = JSON:decode(last(deviceMsgs).params.device)
+T.eq("and in full on request", { somfyFull.type, somfyFull.root, somfyFull.shades["1"].name }, {
+  "espsomfy",
+  "somfy",
+  "Living Room",
+})
+proxyMsgs = {}
+somfyDev:feed(Codec.publish("somfy/shades/1/position", "40", { retain = true }))
+ShimFireTimers()
+T.eq("positions are not discovery", notifies("TASMOTA_DEVICES_CHANGED"), 0)
+local _, _, somfyPrinted = T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "PrintESPSomfyShades" })
+end)
+T.contains("Print ESPSomfy Shades", somfyPrinted, "Roller Shade")
+T.capture(function()
+  ExecuteCommand("LUA_ACTION", { ACTION = "ForgetESPSomfyShades" })
+end)
+T.eq("Forget ESPSomfy Shades", propertyWrites["ESPSomfy Shades"], "0")
+ShimSetDevices({})
+
+-------------------------------------------------------------------------------
 T.section("Back to External")
 -------------------------------------------------------------------------------
 local srvBuiltIn = last(servers)
@@ -587,6 +660,7 @@ for _, call in ipairs(client.calls) do
 end
 T.check("subscribes to Shelly announces", subscribedShelly["+/announce"] and subscribedShelly["+/+/announce"])
 T.check("and to Shelly RPC answers", subscribedShelly["control4/shelly/rpc"])
+T.check("and to ESPSomfy-RTS shade attributes", subscribedShelly["+/shades/+/shadeType"] and subscribedShelly["shades"])
 client.calls = {}
 deviceMsgs = {}
 T.capture(function()

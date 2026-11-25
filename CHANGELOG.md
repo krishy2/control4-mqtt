@@ -18,6 +18,28 @@ Template for a new release entry (copy below the heading, fill in, uncomment):
 - Removed
 -->
 
+## v2026112600 - 2026-11-26
+
+### Added
+
+- MQTT Shutter: Somfy RTS shades through
+  [ESPSomfy-RTS](https://github.com/rstrouse/ESPSomfy-RTS). The MQTT Broker
+  finds each controller's shades and groups (ESPSomfy Shades property, Print and
+  Forget ESPSomfy Shades actions), in both broker modes, and the MQTT Shutter
+  lists them in Discovered Device. Picking one fills in every setting from the
+  shade's type, tilt type and Flip Position: positions through the target topic,
+  fully open and closed with Up and Down, Stop as the Somfy My button, slats for
+  tilting shades, and the controller's online status. Groups open and close.
+- MQTT Shutter: three settings for devices like ESPSomfy-RTS, useful by hand
+  too: **Target State Topic** (a target on its own topic), **Invert Movement**
+  (`-1` opening) and **Stop Only While Moving** (a Somfy My sends an idle shade
+  to its favorite position, so Stop goes out only while it moves).
+
+### Fixed
+
+- MQTT Shutter: a message with only the target (on its own topic) no longer ends
+  a move Control4 started.
+
 ## v2026112109 - 2026-11-21
 
 ### Fixed
